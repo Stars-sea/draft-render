@@ -1,6 +1,6 @@
 use num_traits::Zero;
 use num_traits::real::Real;
-use std::ops::{Add, Index, IndexMut, Mul, Sub};
+use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vector<T: Real, const N: usize>([T; N]);
@@ -118,6 +118,18 @@ impl<T: Real, const N: usize> Sub for Vector<T, N> {
     }
 }
 
+impl<T: Real, const N: usize> Neg for Vector<T, N> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        let mut result = self;
+        for i in 0..N {
+            result[i] = -result[i];
+        }
+        result
+    }
+}
+
 // Named constructors and accessors
 
 impl<T: Real> Vector<T, 2> {
@@ -181,5 +193,66 @@ impl<T: Real> Vector<T, 4> {
             return None;
         }
         Some(Vector([self.x() / w, self.y() / w, self.z() / w]))
+    }
+}
+
+// Unit vectors
+
+macro_rules! impl_unit_vectors {
+    ($T:ty, $O:expr, $I:expr) => {
+        impl Vector<$T, 2> {
+            pub const UNIT_X: Self = Self([$I, $O]);
+            pub const UNIT_Y: Self = Self([$O, $I]);
+        }
+        impl Vector<$T, 3> {
+            pub const UNIT_X: Self = Self([$I, $O, $O]);
+            pub const UNIT_Y: Self = Self([$O, $I, $O]);
+            pub const UNIT_Z: Self = Self([$O, $O, $I]);
+        }
+        impl Vector<$T, 4> {
+            pub const UNIT_X: Self = Self([$I, $O, $O, $O]);
+            pub const UNIT_Y: Self = Self([$O, $I, $O, $O]);
+            pub const UNIT_Z: Self = Self([$O, $O, $I, $O]);
+            pub const UNIT_W: Self = Self([$O, $O, $O, $I]);
+        }
+    };
+}
+
+impl_unit_vectors!(f32, 0.0, 1.0);
+impl_unit_vectors!(f64, 0.0, 1.0);
+
+impl<T: Real> Vector<T, 2> {
+    pub fn unit_x() -> Self {
+        Self([T::one(), T::zero()])
+    }
+    pub fn unit_y() -> Self {
+        Self([T::zero(), T::one()])
+    }
+}
+
+impl<T: Real> Vector<T, 3> {
+    pub fn unit_x() -> Self {
+        Self([T::one(), T::zero(), T::zero()])
+    }
+    pub fn unit_y() -> Self {
+        Self([T::zero(), T::one(), T::zero()])
+    }
+    pub fn unit_z() -> Self {
+        Self([T::zero(), T::zero(), T::one()])
+    }
+}
+
+impl<T: Real> Vector<T, 4> {
+    pub fn unit_x() -> Self {
+        Self([T::one(), T::zero(), T::zero(), T::zero()])
+    }
+    pub fn unit_y() -> Self {
+        Self([T::zero(), T::one(), T::zero(), T::zero()])
+    }
+    pub fn unit_z() -> Self {
+        Self([T::zero(), T::zero(), T::one(), T::zero()])
+    }
+    pub fn unit_w() -> Self {
+        Self([T::zero(), T::zero(), T::zero(), T::one()])
     }
 }

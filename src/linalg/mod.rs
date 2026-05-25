@@ -1,16 +1,19 @@
-﻿mod vector;
+mod camera;
 mod matrix;
+mod projection;
+mod quaternion;
+mod rotator;
+mod transform;
+mod vector;
 
-pub use vector::Vector;
 pub use matrix::Matrix;
+pub use quaternion::Quaternion;
+pub use rotator::Rotator;
+pub use vector::Vector;
 
 pub type Vec2<T> = Vector<T, 2>;
 pub type Vec3<T> = Vector<T, 3>;
 pub type Vec4<T> = Vector<T, 4>;
-
-pub type Vec2i = Vector<i32, 2>;
-pub type Vec3i = Vector<i32, 3>;
-pub type Vec4i = Vector<i32, 4>;
 
 pub type Vec2f = Vector<f32, 2>;
 pub type Vec3f = Vector<f32, 3>;
@@ -23,10 +26,6 @@ pub type Vec4d = Vector<f64, 4>;
 pub type Mat2<T> = Matrix<T, 2, 2>;
 pub type Mat3<T> = Matrix<T, 3, 3>;
 pub type Mat4<T> = Matrix<T, 4, 4>;
-
-pub type Mat2i = Matrix<i32, 2, 2>;
-pub type Mat3i = Matrix<i32, 3, 3>;
-pub type Mat4i = Matrix<i32, 4, 4>;
 
 pub type Mat2f = Matrix<f32, 2, 2>;
 pub type Mat3f = Matrix<f32, 3, 3>;

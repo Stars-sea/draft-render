@@ -8,6 +8,16 @@ pub struct Matrix<T: Real, const R: usize, const C: usize>([[T; C]; R]);
 
 // Constructors
 
+impl<T: Real, const N: usize> One for Matrix<T, N, N> {
+    fn one() -> Self {
+        let mut m = Self::zero();
+        for i in 0..N {
+            m[i][i] = T::one();
+        }
+        m
+    }
+}
+
 impl<T: Real, const R: usize, const C: usize> Zero for Matrix<T, R, C> {
     fn zero() -> Self {
         Self([[T::zero(); C]; R])
@@ -76,19 +86,21 @@ impl<T: Real, const R: usize, const C: usize> Matrix<T, R, C> {
         }
         result
     }
+
+    pub fn row(&self, index: usize) -> Vector<T, C> {
+        Vector::from(self[index])
+    }
+
+    pub fn column(&self, index: usize) -> Vector<T, R> {
+        let mut col = Vector::zero();
+        for i in 0..R {
+            col[i] = self[i][index];
+        }
+        col
+    }
 }
 
 // Square matrix operations (R == C)
-
-impl<T: Real, const N: usize> One for Matrix<T, N, N> {
-    fn one() -> Self {
-        let mut m = Self::zero();
-        for i in 0..N {
-            m[i][i] = T::one();
-        }
-        m
-    }
-}
 
 impl<T: Real, const N: usize> Matrix<T, N, N> {
     pub fn det(&self) -> T {
@@ -192,11 +204,7 @@ impl<T: Real, const R: usize, const K: usize, const C: usize> Mul<Matrix<T, K, C
         let mut result = Matrix::<T, R, C>::zero();
         for i in 0..R {
             for j in 0..C {
-                let mut sum = T::zero();
-                for k in 0..K {
-                    sum = sum + self[i][k] * rhs[k][j];
-                }
-                result[i][j] = sum;
+                result[i][j] = self.row(i) * rhs.column(j);
             }
         }
         result
@@ -227,12 +235,30 @@ impl<T: Real, const R: usize, const C: usize> Mul<Vector<T, C>> for Matrix<T, R,
     fn mul(self, rhs: Vector<T, C>) -> Self::Output {
         let mut result = Vector::zero();
         for i in 0..R {
-            let mut sum = T::zero();
-            for j in 0..C {
-                sum = sum + self[i][j] * rhs[j];
-            }
-            result[i] = sum;
+            result[i] = self.row(i) * rhs;
         }
         result
     }
 }
+
+// Embed smaller matrix into larger (top-left, rest identity)
+
+macro_rules! impl_matrix_embed {
+    ($N1:literal => $N2:literal) => {
+        impl<T: Real> From<Matrix<T, $N1, $N1>> for Matrix<T, $N2, $N2> {
+            fn from(small: Matrix<T, $N1, $N1>) -> Self {
+                let mut result = Self::one();
+                for i in 0..$N1 {
+                    for j in 0..$N1 {
+                        result[i][j] = small[i][j];
+                    }
+                }
+                result
+            }
+        }
+    };
+}
+
+impl_matrix_embed!(2 => 3);
+impl_matrix_embed!(2 => 4);
+impl_matrix_embed!(3 => 4);
