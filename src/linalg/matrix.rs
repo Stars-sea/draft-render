@@ -8,6 +8,12 @@ pub struct Matrix<T: Real, const R: usize, const C: usize>([[T; C]; R]);
 
 // Constructors
 
+impl<T: Real, const R: usize, const C: usize> Matrix<T, R, C> {
+    pub fn fill(n: T) -> Matrix<T, R, C> {
+        Self([[n; C]; R])
+    }
+}
+
 impl<T: Real, const N: usize> One for Matrix<T, N, N> {
     fn one() -> Self {
         let mut m = Self::zero();
