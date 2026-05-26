@@ -1,9 +1,7 @@
-mod camera;
 mod matrix;
-mod projection;
 mod quaternion;
 mod rotator;
-mod transform;
+pub mod transform;
 mod vector;
 
 pub use matrix::Matrix;

@@ -1,6 +1,6 @@
-use num_traits::Zero;
 use num_traits::real::Real;
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use num_traits::Zero;
+use std::ops::{Add, BitOr, Index, IndexMut, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vector<T: Real, const N: usize>([T; N]);
@@ -77,6 +77,16 @@ impl<T: Real, const N: usize> Mul for Vector<T, N> {
 
     fn mul(self, rhs: Self) -> Self::Output {
         self.dot(&rhs)
+    }
+}
+
+// Parallel
+
+impl<T: Real, const N: usize> BitOr<Vector<T, N>> for Vector<T, N> {
+    type Output = bool;
+
+    fn bitor(self, rhs: Vector<T, N>) -> Self::Output {
+        (self * rhs - self.norm() * rhs.norm()).is_zero()
     }
 }
 
@@ -172,6 +182,10 @@ impl<T: Real> Vector<T, 3> {
 impl<T: Real> Vector<T, 4> {
     pub fn new(x: T, y: T, z: T, w: T) -> Self {
         Self([x, y, z, w])
+    }
+
+    pub fn from_vec3(vec3: Vector<T, 3>, w: T) -> Self {
+        Self([vec3.x(), vec3.y(), vec3.z(), w])
     }
 
     pub fn x(&self) -> T {

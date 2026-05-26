@@ -1,6 +1,9 @@
 mod linalg;
 mod buffer;
 mod color;
+pub mod geometry;
+mod camera;
+mod projection;
 
 use anyhow::Result;
 use bytemuck::cast_slice;

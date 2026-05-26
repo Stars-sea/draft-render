@@ -3,7 +3,7 @@ use num_traits::real::Real;
 use num_traits::{One, Zero};
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Matrix<T: Real, const R: usize, const C: usize>([[T; C]; R]);
 
 // Constructors
