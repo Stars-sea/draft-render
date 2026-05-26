@@ -20,6 +20,10 @@ impl<T: Real> Transform<T> {
         }
     }
 
+    pub fn translation(&self) -> Vec3<T> { self.translation }
+    pub fn rotation(&self) -> Quaternion<T> { self.rotation }
+    pub fn scale(&self) -> Vec3<T> { self.scale }
+
     pub fn with_translation(&mut self, translation: Vec3<T>) -> &mut Self {
         self.translation = translation;
         self.matrix_cache = None;

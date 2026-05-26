@@ -18,12 +18,12 @@ impl MeshBuilder {
         }
     }
 
-    pub fn vertex(&mut self, v: Vec3f) -> &mut Self {
+    pub fn vertex(mut self, v: Vec3f) -> Self {
         self.vertices.push(v);
         self
     }
 
-    pub fn triangle(&mut self, i0: usize, i1: usize, i2: usize) -> &mut Self {
+    pub fn triangle(mut self, i0: usize, i1: usize, i2: usize) -> Self {
         self.indices.push([i0, i1, i2]);
         self
     }
