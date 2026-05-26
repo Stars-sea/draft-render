@@ -1,5 +1,5 @@
 ﻿use crate::linalg::{Mat4f, Vec3f, transform};
-use crate::projection::{Perspective, Projection};
+use super::projection::{Perspective, Projection};
 use num_traits::Zero;
 use std::sync::Arc;
 

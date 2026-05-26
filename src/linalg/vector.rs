@@ -1,5 +1,5 @@
-use num_traits::real::Real;
 use num_traits::Zero;
+use num_traits::real::Real;
 use std::ops::{Add, BitOr, Index, IndexMut, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy)]
@@ -182,6 +182,10 @@ impl<T: Real> Vector<T, 3> {
 impl<T: Real> Vector<T, 4> {
     pub fn new(x: T, y: T, z: T, w: T) -> Self {
         Self([x, y, z, w])
+    }
+
+    pub fn xyz(&self) -> Vector<T, 3> {
+        Vector([self.x(), self.y(), self.z()])
     }
 
     pub fn from_vec3(vec3: Vector<T, 3>, w: T) -> Self {
