@@ -1,4 +1,7 @@
-﻿use bytemuck::{Pod, Zeroable};
+﻿#![allow(unused)]
+
+use bytemuck::{Pod, Zeroable};
+use std::ops::{Add, Div, Mul, Sub};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
 #[repr(transparent)]
@@ -39,5 +42,50 @@ impl Color {
 
     pub fn b(&self) -> u8 {
         ((self.0 >> 0) & 0xFF) as u8
+    }
+
+    /// Average color
+    pub fn average(samples: &[Color]) -> Color {
+        let n = samples.len() as u32;
+        let (mut r, mut g, mut b, mut a) = (0u32, 0u32, 0u32, 0u32);
+        for c in samples {
+            r += c.r() as u32;
+            g += c.g() as u32;
+            b += c.b() as u32;
+            a += c.a() as u32;
+        }
+        Color::argb((a / n) as u8, (r / n) as u8, (g / n) as u8, (b / n) as u8)
+    }
+}
+
+impl Add<Color> for Color {
+    type Output = Color;
+
+    fn add(self, rhs: Color) -> Color {
+        Color(self.0.wrapping_add(rhs.0))
+    }
+}
+
+impl Sub<Color> for Color {
+    type Output = Color;
+
+    fn sub(self, rhs: Color) -> Color {
+        Color(self.0.wrapping_sub(rhs.0))
+    }
+}
+
+impl Mul<u32> for Color {
+    type Output = Color;
+
+    fn mul(self, rhs: u32) -> Self::Output {
+        Color(self.0.wrapping_mul(rhs))
+    }
+}
+
+impl Div<u32> for Color {
+    type Output = Color;
+
+    fn div(self, rhs: u32) -> Self::Output {
+        Color(self.0 / rhs)
     }
 }

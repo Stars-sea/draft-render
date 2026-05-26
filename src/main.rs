@@ -1,6 +1,7 @@
 mod buffer;
 mod color;
 mod linalg;
+mod pipeline;
 mod render_thread;
 mod scene;
 
