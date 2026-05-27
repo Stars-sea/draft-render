@@ -1,4 +1,3 @@
-mod buffer;
 mod color;
 mod linalg;
 mod pipeline;
@@ -6,11 +5,10 @@ mod render_thread;
 mod scene;
 
 use crate::color::Color;
-use crate::linalg::Vec3f;
+use crate::linalg::Vec3;
+use crate::pipeline::Rasterizer;
 use crate::render_thread::{RenderJob, RenderResult};
-use crate::scene::MeshBuilder;
-use crate::scene::Transform;
-use crate::scene::{Camera, Scene, SceneObject};
+use crate::scene::{Camera, MeshBuilder, Scene, SceneObject, Transform};
 
 use anyhow::Result;
 use minifb::{Key, Window, WindowOptions};
@@ -25,10 +23,12 @@ fn main() -> Result<()> {
     scene.add_object(generate_triangle());
     scene.add_object(generate_square());
 
-    let (job_tx, job_rx) = mpsc::sync_channel::<RenderJob>(1);
+    let (job_tx, job_rx) = mpsc::sync_channel::<RenderJob<f64>>(1);
     let (result_tx, result_rx) = mpsc::sync_channel::<RenderResult>(1);
 
-    thread::spawn(move || render_thread::render_loop(job_rx, result_tx));
+    thread::spawn(move || {
+        render_thread::render_loop(Rasterizer::<f64, 4>::MSAA_4X, job_rx, result_tx)
+    });
 
     let mut window = Window::new("renderer", width, height, WindowOptions::default())?;
 
@@ -50,11 +50,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn generate_triangle() -> SceneObject {
+fn generate_triangle() -> SceneObject<f64> {
     let builder = MeshBuilder::new()
-        .vertex(Vec3f::new(-0.5, -0.5, 3.0))
-        .vertex(Vec3f::new(0.5, -0.5, 3.0))
-        .vertex(Vec3f::new(0.0, 0.5, 3.0))
+        .vertex(Vec3::new(-0.5, -0.5, 3.0))
+        .vertex(Vec3::new(0.5, -0.5, 3.0))
+        .vertex(Vec3::new(0.0, 0.5, 3.0))
         .triangle(0, 1, 2);
 
     SceneObject::new(
@@ -64,13 +64,13 @@ fn generate_triangle() -> SceneObject {
     )
 }
 
-fn generate_square() -> SceneObject {
+fn generate_square() -> SceneObject<f64> {
     let s = 0.4;
     let builder = MeshBuilder::new()
-        .vertex(Vec3f::new(-s, -s, 2.9))
-        .vertex(Vec3f::new(s, -s, 2.9))
-        .vertex(Vec3f::new(s, s, 3.1))
-        .vertex(Vec3f::new(-s, s, 3.1))
+        .vertex(Vec3::new(-s, -s, 2.9))
+        .vertex(Vec3::new(s, -s, 2.9))
+        .vertex(Vec3::new(s, s, 3.1))
+        .vertex(Vec3::new(-s, s, 3.1))
         .triangle(0, 1, 2)
         .triangle(0, 2, 3);
 

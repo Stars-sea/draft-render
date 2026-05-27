@@ -1,99 +1,111 @@
-use crate::buffer::RenderBuffer;
 use crate::color::Color;
-use crate::linalg::{Mat4f, Vec3f, Vec4f};
+use crate::linalg::{Mat4, Vec4};
+use crate::pipeline::buffer::RenderBuffer;
 
+use num_traits::ConstZero;
+use num_traits::real::Real;
 use std::cmp::min;
 
 #[inline]
-fn is_inside(u: f32, v: f32, tl_ca: bool, tl_cb: bool, tl_ab: bool) -> bool {
-    const EPS: f32 = 1e-5;
-    (u > 0.0 || (u > -EPS && tl_ca))
-        && (v > 0.0 || (v > -EPS && tl_cb))
-        && (u + v < 1.0 || (u + v < 1.0 + EPS && tl_ab))
+fn is_inside<T: Real>(u: T, v: T, tl_ca: bool, tl_cb: bool, tl_ab: bool, eps: T) -> bool {
+    let z = T::zero();
+    let o = T::one();
+    (u > z || (u > -eps && tl_ca))
+        && (v > z || (v > -eps && tl_cb))
+        && (u + v < o || (u + v < o + eps && tl_ab))
 }
 
-fn is_top_left(start: Vec3f, end: Vec3f) -> bool {
-    let dy = end.y() - start.y();
-    if dy.abs() < f32::EPSILON {
-        start.x() > end.x()
+fn is_top_left<T: Real>(sx: T, sy: T, ex: T, ey: T, eps: T) -> bool {
+    let dy = ey - sy;
+    if dy.abs() < eps {
+        sx > ex
     } else {
-        dy < 0.0
+        dy < T::zero()
     }
 }
 
-fn min_max(a: f32, b: f32, c: f32) -> (usize, usize) {
+fn min_max<T: Real>(a: T, b: T, c: T) -> (usize, usize) {
     (
-        a.min(b).min(c).floor() as usize,
-        a.max(b).max(c).ceil() as usize,
+        a.min(b).min(c).floor().to_usize().unwrap(),
+        a.max(b).max(c).ceil().to_usize().unwrap(),
     )
 }
 
-pub struct Rasterizer<const N: usize> {
-    pub samples: [(f32, f32); N],
+pub struct Rasterizer<T: Real, const N: usize> {
+    pub samples: [(T, T); N],
 }
 
-impl Rasterizer<1> {
-    #[allow(unused)]
+impl<T: Real + ConstZero> Rasterizer<T, 1> {
     pub const NON_MSAA: Self = Self {
-        samples: [(0.0, 0.0)],
+        samples: [(T::ZERO, T::ZERO)],
     };
 }
 
-impl Rasterizer<4> {
-    #[allow(unused)]
-    pub const MSAA_4X: Self = Self {
-        samples: [
-            (-0.125, -0.375),
-            (0.375, -0.125),
-            (-0.375, 0.125),
-            (0.125, 0.375),
-        ],
+macro_rules! impl_msaa_4x {
+    ($T:ty) => {
+        impl Rasterizer<$T, 4> {
+            pub const MSAA_4X: Self = Self {
+                samples: [
+                    (-0.125, -0.375),
+                    (0.375, -0.125),
+                    (-0.375, 0.125),
+                    (0.125, 0.375),
+                ],
+            };
+        }
     };
 }
 
-impl<const N: usize> Rasterizer<N> {
-    #[allow(unused)]
-    pub const fn new(samples: [(f32, f32); N]) -> Self {
+impl_msaa_4x!(f32);
+impl_msaa_4x!(f64);
+
+impl<T: Real, const N: usize> Rasterizer<T, N> {
+    pub const fn new(samples: [(T, T); N]) -> Self {
         Self { samples }
     }
 
     pub fn rasterize(
         &self,
         cb: &mut RenderBuffer<Color, N>,
-        zb: &mut RenderBuffer<f32, N>,
-        a: Vec3f,
-        b: Vec3f,
-        c: Vec3f,
+        zb: &mut RenderBuffer<T, N>,
+        a: Vec4<T>,
+        b: Vec4<T>,
+        c: Vec4<T>,
         color: Color,
     ) {
-        let (w, h) = (cb.width() as f32, cb.height() as f32);
-        let vp = Mat4f::from([
-            [w / 2.0, 0.0, 0.0, w / 2.0],
-            [0.0, -h / 2.0, 0.0, h / 2.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
+        let (o, i, two) = (T::zero(), T::one(), T::from(2.0).unwrap());
+        let (w, h) = (T::from(cb.width()).unwrap(), T::from(cb.height()).unwrap());
+        let vp = Mat4::from([
+            [w / two, o, o, w / two],
+            [o, -h / two, o, h / two],
+            [o, o, i, o],
+            [o, o, o, i],
         ]);
 
-        let sa = (vp * Vec4f::from_vec3(a, 1.0)).xyz();
-        let sb = (vp * Vec4f::from_vec3(b, 1.0)).xyz();
-        let sc = (vp * Vec4f::from_vec3(c, 1.0)).xyz();
+        let sa = (vp * a).perspective_divide().unwrap();
+        let sb = (vp * b).perspective_divide().unwrap();
+        let sc = (vp * c).perspective_divide().unwrap();
         let (ea, eb) = (sa - sc, sb - sc);
 
-        let inv = 1.0 / (ea.x() * eb.y() - ea.y() * eb.x());
+        let inv = i / (ea.x() * eb.y() - ea.y() * eb.x());
         let dux = eb.y() * inv;
         let duy = -eb.x() * inv;
         let dvx = -ea.y() * inv;
         let dvy = ea.x() * inv;
 
-        let tl_ca = is_top_left(sc, sa);
-        let tl_cb = is_top_left(sc, sb);
-        let tl_ab = is_top_left(sa, sb);
+        let edge_eps = T::from(1e-5).unwrap();
+        let top_left_eps = T::epsilon();
+
+        let tl_ca = is_top_left(sc.x(), sc.y(), sa.x(), sa.y(), top_left_eps);
+        let tl_cb = is_top_left(sc.x(), sc.y(), sb.x(), sb.y(), top_left_eps);
+        let tl_ab = is_top_left(sa.x(), sa.y(), sb.x(), sb.y(), top_left_eps);
 
         let (min_x, max_x) = min_max(sa.x(), sb.x(), sc.x());
         let (min_y, max_y) = min_max(sa.y(), sb.y(), sc.y());
 
-        let px0 = min_x as f32 + 0.5 - sc.x();
-        let py0 = min_y as f32 + 0.5 - sc.y();
+        let half = T::from(0.5).unwrap();
+        let px0 = T::from(min_x).unwrap() + half - sc.x();
+        let py0 = T::from(min_y).unwrap() + half - sc.y();
         let mut u0 = (eb.y() * px0 - eb.x() * py0) * inv;
         let mut v0 = (ea.x() * py0 - ea.y() * px0) * inv;
 
@@ -105,7 +117,7 @@ impl<const N: usize> Rasterizer<N> {
                     let (sx, sy) = self.samples[i];
                     let us = u + sx * dux + sy * duy;
                     let vs = v + sx * dvx + sy * dvy;
-                    if is_inside(us, vs, tl_ca, tl_cb, tl_ab) {
+                    if is_inside(us, vs, tl_ca, tl_cb, tl_ab, edge_eps) {
                         let z = sc.z() + us * ea.z() + vs * eb.z();
                         let idx = base + i;
                         if z < *zb.get(idx) {
@@ -114,11 +126,11 @@ impl<const N: usize> Rasterizer<N> {
                         }
                     }
                 }
-                u += dux;
-                v += dvx;
+                u = u + dux;
+                v = v + dvx;
             }
-            u0 += duy;
-            v0 += dvy;
+            u0 = u0 + duy;
+            v0 = v0 + dvy;
         }
     }
 

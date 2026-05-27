@@ -1,15 +1,16 @@
-use crate::linalg::{Mat4f, Quaternion, Rotator, Vec3f, transform};
+use num_traits::real::Real;
+use crate::linalg::{Mat4f, Quaternion, Rotator, Vec3f, transform, Vec3, Mat4};
 use crate::scene::Projection;
 use num_traits::Zero;
 
-pub struct Camera {
-    pub position: Vec3f,
-    pub rotator: Rotator<f32>,
-    pub proj: Projection,
+pub struct Camera<T: Real> {
+    pub position: Vec3<T>,
+    pub rotator: Rotator<T>,
+    pub proj: Projection<T>,
 }
 
-impl Camera {
-    pub fn new(position: Vec3f, rotator: Rotator<f32>, proj: Projection) -> Self {
+impl<T: Real> Camera<T> {
+    pub fn new(position: Vec3<T>, rotator: Rotator<T>, proj: Projection<T>) -> Self {
         Self {
             position,
             rotator,
@@ -17,18 +18,19 @@ impl Camera {
         }
     }
 
-    pub fn view_matrix(&self) -> Mat4f {
-        let rotation: Quaternion<f32> = self.rotator.into();
-        let forward = rotation.rotate_vector(Vec3f::unit_z());
-        let up = rotation.rotate_vector(Vec3f::unit_y());
+    pub fn view_matrix(&self) -> Mat4<T> {
+        let rotation: Quaternion<T> = self.rotator.into();
+        let forward = rotation.rotate_vector(Vec3::unit_z());
+        let up = rotation.rotate_vector(Vec3::unit_y());
         let right = up.cross(&forward).normalize();
         let corrected_up = forward.cross(&right);
 
-        let r = Mat4f::from([
-            [right.x(), corrected_up.x(), forward.x(), 0.0],
-            [right.y(), corrected_up.y(), forward.y(), 0.0],
-            [right.z(), corrected_up.z(), forward.z(), 0.0],
-            [0.0, 0.0, 0.0, 1.0],
+        let (o, i) = (T::zero(), T::one());
+        let r = Mat4::from([
+            [right.x(), corrected_up.x(), forward.x(), o],
+            [right.y(), corrected_up.y(), forward.y(), o],
+            [right.z(), corrected_up.z(), forward.z(), o],
+            [o, o, o, i],
         ]);
 
         let t = transform::translate(-self.position);
@@ -36,13 +38,13 @@ impl Camera {
         r.inverse().unwrap() * t
     }
 
-    pub fn vp_matrix(&self, aspect: f32) -> Mat4f {
+    pub fn vp_matrix(&self, aspect: T) -> Mat4<T> {
         self.proj.projection_matrix(aspect) * self.view_matrix()
     }
 }
 
-impl Default for Camera {
+impl<T: Real> Default for Camera<T> {
     fn default() -> Self {
-        Self::new(Vec3f::zero(), Rotator::identity(), Projection::default())
+        Self::new(Vec3::zero(), Rotator::identity(), Projection::default())
     }
 }

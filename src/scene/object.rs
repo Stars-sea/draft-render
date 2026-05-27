@@ -3,15 +3,16 @@ use crate::scene::mesh::Mesh;
 use crate::scene::transform::Transform;
 
 use std::sync::Arc;
+use num_traits::real::Real;
 
-pub struct SceneObject {
-    pub mesh: Arc<Mesh>,
-    pub transform: Transform<f32>,
+pub struct SceneObject<T: Real> {
+    pub mesh: Arc<Mesh<T>>,
+    pub transform: Transform<T>,
     pub color: Color,
 }
 
-impl SceneObject {
-    pub fn new(mesh: Arc<Mesh>, transform: Transform<f32>, color: Color) -> Self {
+impl<T: Real> SceneObject<T> {
+    pub fn new(mesh: Arc<Mesh<T>>, transform: Transform<T>, color: Color) -> Self {
         Self {
             mesh,
             transform,

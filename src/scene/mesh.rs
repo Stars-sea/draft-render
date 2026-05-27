@@ -1,16 +1,17 @@
-﻿use crate::linalg::Vec3f;
+﻿use num_traits::real::Real;
+use crate::linalg::Vec3;
 
-pub struct Mesh {
-    pub vertices: Vec<Vec3f>,
+pub struct Mesh<T: Real> {
+    pub vertices: Vec<Vec3<T>>,
     pub indices: Vec<[usize; 3]>,
 }
 
-pub struct MeshBuilder {
-    vertices: Vec<Vec3f>,
+pub struct MeshBuilder<T: Real> {
+    vertices: Vec<Vec3<T>>,
     indices: Vec<[usize; 3]>,
 }
 
-impl MeshBuilder {
+impl<T: Real> MeshBuilder<T> {
     pub fn new() -> Self {
         Self {
             vertices: Vec::new(),
@@ -18,7 +19,7 @@ impl MeshBuilder {
         }
     }
 
-    pub fn vertex(mut self, v: Vec3f) -> Self {
+    pub fn vertex(mut self, v: Vec3<T>) -> Self {
         self.vertices.push(v);
         self
     }
@@ -28,7 +29,7 @@ impl MeshBuilder {
         self
     }
 
-    pub fn build(mut self) -> Mesh {
+    pub fn build(mut self) -> Mesh<T> {
         Mesh {
             vertices: self.vertices,
             indices: self.indices,
