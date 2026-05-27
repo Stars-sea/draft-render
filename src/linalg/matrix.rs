@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use super::vector::Vector;
 use num_traits::real::Real;
 use num_traits::{One, Zero};

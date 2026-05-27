@@ -1,5 +1,7 @@
-mod rasterizer;
 mod buffer;
+mod fragment;
+mod rasterizer;
 
 pub use buffer::RenderBuffer;
-pub use rasterizer::{Fragment, Rasterizer};
+pub use fragment::Fragment;
+pub use rasterizer::Rasterizer;

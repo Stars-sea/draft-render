@@ -1,4 +1,3 @@
-use crate::linalg::Vec4f;
 use crate::render_thread::{RenderJob, RenderObject};
 use crate::scene::Camera;
 use crate::scene::object::SceneObject;

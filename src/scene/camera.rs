@@ -1,5 +1,5 @@
 use num_traits::real::Real;
-use crate::linalg::{Mat4f, Quaternion, Rotator, Vec3f, transform, Vec3, Mat4};
+use crate::linalg::{Quaternion, Rotator, transform, Vec3, Mat4};
 use crate::scene::Projection;
 use num_traits::Zero;
 

@@ -45,22 +45,8 @@ pub fn render_loop<T: Real, const N: usize>(
         frag_buf.clear(Fragment::new());
 
         for obj in &job.objects {
-            let vertices: Vec<Vec4<T>> = obj
-                .mesh
-                .vertices
-                .iter()
-                .map(|v| obj.mvp * Vec4::from_vec3(*v, T::one()))
-                .collect();
-
-            for &[i0, i1, i2] in &obj.mesh.indices {
-                rasterizer.rasterize(
-                    &mut frag_buf,
-                    vertices[i0],
-                    vertices[i1],
-                    vertices[i2],
-                    obj.color,
-                );
-            }
+            let vertices = transform_vertices(&obj.mesh, &obj.mvp);
+            rasterizer.draw_mesh(&mut frag_buf, &vertices, &obj.mesh.indices, obj.color);
         }
 
         rasterizer.resolve(&frag_buf, &mut frame_buffer);
@@ -70,4 +56,12 @@ pub fn render_loop<T: Real, const N: usize>(
             break;
         }
     }
+}
+
+/// MVP 变换 Mesh 的所有顶点到裁剪空间。
+fn transform_vertices<T: Real>(mesh: &Mesh<T>, mvp: &Mat4<T>) -> Vec<Vec4<T>> {
+    mesh.vertices
+        .iter()
+        .map(|v| *mvp * Vec4::from_vec3(*v, T::one()))
+        .collect()
 }

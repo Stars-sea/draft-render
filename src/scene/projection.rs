@@ -1,4 +1,4 @@
-use crate::linalg::{Mat4, Mat4f, Vec3, Vec3f, transform};
+use crate::linalg::{Mat4, Vec3, transform};
 use num_traits::real::Real;
 use std::f32::consts;
 

@@ -1,34 +1,11 @@
 use crate::color::Color;
 use crate::linalg::{Mat4, Vec4};
 use crate::pipeline::buffer::RenderBuffer;
+use crate::pipeline::fragment::Fragment;
 
 use num_traits::ConstZero;
 use num_traits::real::Real;
 use std::cmp::min;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Fragment — 像素级 N 采样数据，AoS 布局对 CPU 缓存友好
-// ═══════════════════════════════════════════════════════════════════════════
-
-#[derive(Clone)]
-pub struct Fragment<T: Real, const N: usize> {
-    pub color_buf: [Color; N],
-    pub depth_buf: [T; N],
-}
-
-impl<T: Real, const N: usize> Fragment<T, N> {
-    pub fn new() -> Self {
-        Self {
-            color_buf: [Color::BLACK; N],
-            depth_buf: [T::max_value(); N],
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.color_buf.fill(Color::BLACK);
-        self.depth_buf.fill(T::max_value());
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // helpers
@@ -68,6 +45,7 @@ pub struct Rasterizer<T: Real, const N: usize> {
 }
 
 impl<T: Real + ConstZero> Rasterizer<T, 1> {
+    #[allow(unused)]
     pub const NON_MSAA: Self = Self {
         samples: [(T::ZERO, T::ZERO)],
     };
@@ -75,6 +53,7 @@ impl<T: Real + ConstZero> Rasterizer<T, 1> {
 
 macro_rules! impl_msaa_4x {
     ($T:ty) => {
+        #[allow(unused)]
         impl Rasterizer<$T, 4> {
             pub const MSAA_4X: Self = Self {
                 samples: [
@@ -92,6 +71,7 @@ impl_msaa_4x!(f32);
 impl_msaa_4x!(f64);
 
 impl<T: Real, const N: usize> Rasterizer<T, N> {
+    #[allow(unused)]
     pub const fn new(samples: [(T, T); N]) -> Self {
         Self { samples }
     }
@@ -164,6 +144,19 @@ impl<T: Real, const N: usize> Rasterizer<T, N> {
             }
             u0 = u0 + duy;
             v0 = v0 + dvy;
+        }
+    }
+
+    /// 三角形迭代 —— 遍历索引并光栅化每个三角形。
+    pub fn draw_mesh(
+        &self,
+        buf: &mut RenderBuffer<Fragment<T, N>>,
+        vertices: &[Vec4<T>],
+        indices: &[[usize; 3]],
+        color: Color,
+    ) {
+        for &[i0, i1, i2] in indices {
+            self.rasterize(buf, vertices[i0], vertices[i1], vertices[i2], color);
         }
     }
 
