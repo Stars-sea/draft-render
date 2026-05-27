@@ -1,32 +1,36 @@
 use crate::render_thread::{RenderJob, RenderObject};
-use crate::scene::Camera;
 use crate::scene::object::SceneObject;
-
-use num_traits::real::Real;
+use crate::scene::{Camera, Light};
 use std::sync::Arc;
 
-pub struct Scene<T: Real> {
-    pub camera: Camera<T>,
-    pub objects: Vec<SceneObject<T>>,
+pub struct Scene {
+    pub camera: Camera,
+    pub lights: Vec<Arc<dyn Light + Send + Sync>>,
+    pub objects: Vec<SceneObject>,
 }
 
-impl<T: Real> Scene<T> {
-    pub fn new(camera: Camera<T>) -> Self {
+impl Scene {
+    pub fn new(camera: Camera) -> Self {
         Self {
             camera,
+            lights: Vec::new(),
             objects: Vec::new(),
         }
     }
 
-    pub fn add_object(&mut self, object: SceneObject<T>) {
+    pub fn add_light(&mut self, light: Arc<dyn Light + Send + Sync>) {
+        self.lights.push(light);
+    }
+
+    pub fn add_object(&mut self, object: SceneObject) {
         self.objects.push(object);
     }
 
-    pub fn build_render_job(&mut self, width: usize, height: usize) -> RenderJob<T> {
-        let aspect = T::from(width).unwrap() / T::from(height).unwrap();
+    pub fn build_render_job(&mut self, width: usize, height: usize) -> RenderJob {
+        let aspect = width as f32 / height as f32;
         let vp = self.camera.vp_matrix(aspect);
 
-        let objects: Vec<RenderObject<T>> = self
+        let objects = self
             .objects
             .iter_mut()
             .map(|obj| RenderObject {
@@ -37,6 +41,7 @@ impl<T: Real> Scene<T> {
             .collect();
 
         RenderJob {
+            lights: self.lights.clone(),
             objects,
             width,
             height,
