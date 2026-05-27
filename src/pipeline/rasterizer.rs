@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::linalg::{transform, Vec2f, Vec3f, Vec4f};
+use crate::linalg::{Vec2f, Vec3f, Vec4f, transform};
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
 use crate::pipeline::shader::Shader;
@@ -138,8 +138,13 @@ fn scan_triangle<const N: usize>(
     setup: &TriSetup,
     samples: &[Vec2f; N],
     normal: Vec3f,
+    world_a: Vec3f,
+    world_b: Vec3f,
+    world_c: Vec3f,
     shader: &impl Shader,
 ) {
+    let w_du = world_a - world_c;
+    let w_dv = world_b - world_c;
     for y in setup.bounds.range_y(buf.height() - 1) {
         let (mut u, mut v) = setup.row_start(y);
         for x in setup.bounds.range_x(buf.width() - 1) {
@@ -151,7 +156,8 @@ fn scan_triangle<const N: usize>(
                     let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
                     if z < frag.depth_buf[i] {
                         frag.depth_buf[i] = z;
-                        frag.color_buf[i] = shader.shade(us, vs, z, normal);
+                        let wp = world_c + w_du * us + w_dv * vs;
+                        frag.color_buf[i] = shader.shade(us, vs, z, normal, wp);
                     }
                 }
             }
@@ -201,6 +207,9 @@ impl<const N: usize> Rasterizer<N> {
         b: Vec4f,
         c: Vec4f,
         normal: Vec3f,
+        world_a: Vec3f,
+        world_b: Vec3f,
+        world_c: Vec3f,
         shader: &impl Shader,
     ) {
         let (w, h) = (buf.width() as f32, buf.height() as f32);
@@ -213,19 +222,39 @@ impl<const N: usize> Rasterizer<N> {
 
         let setup = TriSetup::new(sa, sb, sc);
 
-        scan_triangle(buf, &setup, &self.samples, normal, shader);
+        scan_triangle(
+            buf,
+            &setup,
+            &self.samples,
+            normal,
+            world_a,
+            world_b,
+            world_c,
+            shader,
+        );
     }
 
     pub fn draw_mesh(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
         vertices: &[Vec4f],
+        world_positions: &[Vec3f],
         indices: &[[usize; 3]],
         normals: &[Vec3f],
         shader: impl Shader,
     ) {
         for (t, &[i0, i1, i2]) in indices.iter().enumerate() {
-            self.rasterize(buf, vertices[i0], vertices[i1], vertices[i2], normals[t], &shader);
+            self.rasterize(
+                buf,
+                vertices[i0],
+                vertices[i1],
+                vertices[i2],
+                normals[t],
+                world_positions[i0],
+                world_positions[i1],
+                world_positions[i2],
+                &shader,
+            );
         }
     }
 

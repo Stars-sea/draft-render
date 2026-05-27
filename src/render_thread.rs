@@ -19,6 +19,7 @@ pub struct RenderObject {
     pub mvp: Mat4f,
     pub color: Color,
     pub face_normals: Vec<Vec3f>,
+    pub world_positions: Vec<Vec3f>,
 }
 
 pub enum RenderResult {
@@ -51,6 +52,7 @@ pub fn render_loop<const N: usize>(
             rasterizer.draw_mesh(
                 &mut frag_buf,
                 &vertices,
+                &obj.world_positions,
                 &obj.mesh.indices,
                 &obj.face_normals,
                 shader,

@@ -9,7 +9,7 @@ mod scene;
 mod transform;
 
 pub use camera::Camera;
-pub use light::{DirectionalLight, Light};
+pub use light::{DirectionalLight, Light, PointLight};
 pub use mesh::{Mesh, MeshBuilder};
 pub use object::SceneObject;
 pub use projection::Projection;

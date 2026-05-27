@@ -8,7 +8,7 @@ use crate::color::Color;
 use crate::linalg::{Quaternion, Vec3f};
 use crate::pipeline::Rasterizer;
 use crate::render_thread::{RenderJob, RenderResult};
-use crate::scene::{Camera, DirectionalLight, MeshBuilder, Scene, SceneObject, Transform};
+use crate::scene::{Camera, DirectionalLight, MeshBuilder, PointLight, Scene, SceneObject, Transform};
 
 use anyhow::Result;
 use minifb::{Key, Window, WindowOptions};
@@ -22,11 +22,8 @@ fn main() -> Result<()> {
 
     let mut scene = Scene::new(Camera::default());
     scene.add_object(cube());
-    scene.add_light(Arc::new(DirectionalLight::new(
-        Vec3f::new(0.0, -0.5, -0.2),
-        Color::WHITE,
-        1.0,
-    )));
+    scene.add_light(directional_light());
+    scene.add_light(point_light());
 
     let (job_tx, job_rx) = mpsc::sync_channel::<RenderJob>(1);
     let (result_tx, result_rx) = mpsc::sync_channel::<RenderResult>(1);
@@ -54,6 +51,22 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn directional_light() -> Arc<DirectionalLight> {
+    Arc::new(DirectionalLight::new(
+        Vec3f::new(0.0, -1.0, -1.0),
+        Color::WHITE,
+        1.0
+    ))
+}
+
+fn point_light() -> Arc<PointLight> {
+    Arc::new(PointLight::new(
+        Vec3f::new(2.0, 2.0, 3.5),
+        Color::WHITE,
+        8.0,
+    ))
 }
 
 fn cube() -> SceneObject {

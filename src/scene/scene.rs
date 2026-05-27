@@ -1,4 +1,4 @@
-use crate::linalg::{Mat4f, Vec3f};
+use crate::linalg::{Mat4f, Vec3f, Vec4f};
 use crate::render_thread::{RenderJob, RenderObject};
 use crate::scene::Mesh;
 use crate::scene::object::SceneObject;
@@ -38,11 +38,18 @@ impl Scene {
             .map(|obj| {
                 let model = obj.transform.transform_matrix();
                 let mvp = vp * model;
+                let world_positions: Vec<Vec3f> = obj
+                    .mesh
+                    .vertices
+                    .iter()
+                    .map(|v| (model * Vec4f::from_vec3(*v, 1.0)).xyz())
+                    .collect();
                 RenderObject {
                     mesh: Arc::clone(&obj.mesh),
                     mvp,
                     color: obj.color,
                     face_normals: compute_face_normals(&obj.mesh, &model),
+                    world_positions,
                 }
             })
             .collect();
