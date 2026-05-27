@@ -6,6 +6,34 @@ use num_traits::ConstZero;
 use num_traits::real::Real;
 use std::cmp::min;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Fragment — 像素级 N 采样数据，AoS 布局对 CPU 缓存友好
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Clone)]
+pub struct Fragment<T: Real, const N: usize> {
+    pub color_buf: [Color; N],
+    pub depth_buf: [T; N],
+}
+
+impl<T: Real, const N: usize> Fragment<T, N> {
+    pub fn new() -> Self {
+        Self {
+            color_buf: [Color::BLACK; N],
+            depth_buf: [T::max_value(); N],
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.color_buf.fill(Color::BLACK);
+        self.depth_buf.fill(T::max_value());
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
 #[inline]
 fn is_inside<T: Real>(u: T, v: T, tl_ca: bool, tl_cb: bool, tl_ab: bool, eps: T) -> bool {
     let z = T::zero();
@@ -30,6 +58,10 @@ fn min_max<T: Real>(a: T, b: T, c: T) -> (usize, usize) {
         a.max(b).max(c).ceil().to_usize().unwrap(),
     )
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Rasterizer<T, N>
+// ═══════════════════════════════════════════════════════════════════════════
 
 pub struct Rasterizer<T: Real, const N: usize> {
     pub samples: [(T, T); N],
@@ -66,15 +98,17 @@ impl<T: Real, const N: usize> Rasterizer<T, N> {
 
     pub fn rasterize(
         &self,
-        cb: &mut RenderBuffer<Color, N>,
-        zb: &mut RenderBuffer<T, N>,
+        buf: &mut RenderBuffer<Fragment<T, N>>,
         a: Vec4<T>,
         b: Vec4<T>,
         c: Vec4<T>,
         color: Color,
     ) {
         let (o, i, two) = (T::zero(), T::one(), T::from(2.0).unwrap());
-        let (w, h) = (T::from(cb.width()).unwrap(), T::from(cb.height()).unwrap());
+        let (w, h) = (
+            T::from(buf.width()).unwrap(),
+            T::from(buf.height()).unwrap(),
+        );
         let vp = Mat4::from([
             [w / two, o, o, w / two],
             [o, -h / two, o, h / two],
@@ -109,20 +143,19 @@ impl<T: Real, const N: usize> Rasterizer<T, N> {
         let mut u0 = (eb.y() * px0 - eb.x() * py0) * inv;
         let mut v0 = (ea.x() * py0 - ea.y() * px0) * inv;
 
-        for y in min_y..=min(max_y, cb.height() - 1) {
+        for y in min_y..=min(max_y, buf.height() - 1) {
             let (mut u, mut v) = (u0, v0);
-            for x in min_x..=min(max_x, cb.width() - 1) {
-                let base = zb.idx(x, y, 0);
+            for x in min_x..=min(max_x, buf.width() - 1) {
+                let frag = buf.get_mut(x, y);
                 for i in 0..N {
                     let (sx, sy) = self.samples[i];
                     let us = u + sx * dux + sy * duy;
                     let vs = v + sx * dvx + sy * dvy;
                     if is_inside(us, vs, tl_ca, tl_cb, tl_ab, edge_eps) {
                         let z = sc.z() + us * ea.z() + vs * eb.z();
-                        let idx = base + i;
-                        if z < *zb.get(idx) {
-                            *zb.get_mut(idx) = z;
-                            *cb.get_mut(idx) = color;
+                        if z < frag.depth_buf[i] {
+                            frag.depth_buf[i] = z;
+                            frag.color_buf[i] = color;
                         }
                     }
                 }
@@ -134,11 +167,10 @@ impl<T: Real, const N: usize> Rasterizer<T, N> {
         }
     }
 
-    pub fn resolve(&self, src: &RenderBuffer<Color, N>, fb: &mut RenderBuffer<Color>) {
+    pub fn resolve(&self, src: &RenderBuffer<Fragment<T, N>>, fb: &mut RenderBuffer<Color>) {
         for y in 0..src.height() {
             for x in 0..src.width() {
-                let base = src.idx(x, y, 0);
-                fb[(x, y)] = Color::average(&src.as_slice()[base..base + N]);
+                fb[(x, y)] = Color::average(&src[(x, y)].color_buf);
             }
         }
     }

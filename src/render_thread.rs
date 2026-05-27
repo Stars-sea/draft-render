@@ -1,6 +1,6 @@
 use crate::color::Color;
 use crate::linalg::{Mat4, Vec4};
-use crate::pipeline::{Rasterizer, RenderBuffer};
+use crate::pipeline::{Fragment, Rasterizer, RenderBuffer};
 use crate::scene::Mesh;
 
 use bytemuck::cast_slice;
@@ -32,21 +32,17 @@ pub fn render_loop<T: Real, const N: usize>(
     let mut width = 0;
     let mut height = 0;
     let mut frame_buffer = RenderBuffer::new(1, 1, Color::BLACK);
-
-    let mut color_buf = RenderBuffer::new(1, 1, Color::BLACK);
-    let mut depth_buf = RenderBuffer::new(1, 1, T::max_value());
+    let mut frag_buf = RenderBuffer::new(1, 1, Fragment::<T, N>::new());
 
     while let Ok(job) = job_rx.recv() {
         if job.width != width || job.height != height {
             width = job.width;
             height = job.height;
             frame_buffer = RenderBuffer::new(width, height, Color::BLACK);
-            color_buf = RenderBuffer::new(width, height, Color::BLACK);
-            depth_buf = RenderBuffer::new(width, height, T::max_value());
+            frag_buf = RenderBuffer::new(width, height, Fragment::<T, N>::new());
         }
 
-        color_buf.clear(Color::BLACK);
-        depth_buf.clear(T::max_value());
+        frag_buf.clear(Fragment::new());
 
         for obj in &job.objects {
             let vertices: Vec<Vec4<T>> = obj
@@ -58,8 +54,7 @@ pub fn render_loop<T: Real, const N: usize>(
 
             for &[i0, i1, i2] in &obj.mesh.indices {
                 rasterizer.rasterize(
-                    &mut color_buf,
-                    &mut depth_buf,
+                    &mut frag_buf,
                     vertices[i0],
                     vertices[i1],
                     vertices[i2],
@@ -68,7 +63,7 @@ pub fn render_loop<T: Real, const N: usize>(
             }
         }
 
-        rasterizer.resolve(&color_buf, &mut frame_buffer);
+        rasterizer.resolve(&frag_buf, &mut frame_buffer);
 
         let data = cast_slice(frame_buffer.as_slice()).to_vec();
         if result_tx.send(RenderResult::FrameReady(data)).is_err() {

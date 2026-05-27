@@ -1,18 +1,18 @@
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug)]
-pub struct RenderBuffer<E: Clone, const N: usize = 1> {
+pub struct RenderBuffer<E: Clone> {
     width: usize,
     height: usize,
     data: Vec<E>,
 }
 
-impl<E: Clone, const N: usize> RenderBuffer<E, N> {
+impl<E: Clone> RenderBuffer<E> {
     pub fn new(width: usize, height: usize, default: E) -> Self {
         Self {
             width,
             height,
-            data: vec![default; width * height * N],
+            data: vec![default; width * height],
         }
     }
 
@@ -31,46 +31,20 @@ impl<E: Clone, const N: usize> RenderBuffer<E, N> {
     }
 
     #[inline]
-    pub fn idx(&self, x: usize, y: usize, i: usize) -> usize {
-        (x + y * self.width) * N + i
-    }
-
-    #[inline]
-    pub fn get(&self, idx: usize) -> &E {
-        &self.data[idx]
-    }
-
-    #[inline]
-    pub fn get_mut(&mut self, idx: usize) -> &mut E {
-        &mut self.data[idx]
+    pub fn get_mut(&mut self, x: usize, y: usize) -> &mut E {
+        &mut self.data[x + y * self.width]
     }
 }
 
-/// N == 1 时 [(x, y)] 访问像素。
-impl<E: Clone> Index<(usize, usize)> for RenderBuffer<E, 1> {
+impl<E: Clone> Index<(usize, usize)> for RenderBuffer<E> {
     type Output = E;
     fn index(&self, (x, y): (usize, usize)) -> &Self::Output {
         &self.data[x + y * self.width]
     }
 }
 
-impl<E: Clone> IndexMut<(usize, usize)> for RenderBuffer<E, 1> {
+impl<E: Clone> IndexMut<(usize, usize)> for RenderBuffer<E> {
     fn index_mut(&mut self, (x, y): (usize, usize)) -> &mut Self::Output {
         &mut self.data[x + y * self.width]
-    }
-}
-
-/// N != 1 时 [(x, y, i)] 访问采样点。
-impl<E: Clone, const N: usize> Index<(usize, usize, usize)> for RenderBuffer<E, N> {
-    type Output = E;
-    fn index(&self, (x, y, i): (usize, usize, usize)) -> &Self::Output {
-        &self.data[self.idx(x, y, i)]
-    }
-}
-
-impl<E: Clone, const N: usize> IndexMut<(usize, usize, usize)> for RenderBuffer<E, N> {
-    fn index_mut(&mut self, (x, y, i): (usize, usize, usize)) -> &mut Self::Output {
-        let idx = self.idx(x, y, i);
-        &mut self.data[idx]
     }
 }
