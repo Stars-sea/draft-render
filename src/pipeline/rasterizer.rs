@@ -1,166 +1,236 @@
 use crate::color::Color;
-use crate::linalg::{Mat4, Vec4};
+use crate::linalg::{Mat4f, Vec2f, Vec3f, Vec4f, transform};
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
+use crate::pipeline::shader::Shader;
 
 use num_traits::ConstZero;
-use num_traits::real::Real;
 use std::cmp::min;
+use std::ops::RangeInclusive;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// helpers
+// triangle setup
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[inline]
-fn is_inside<T: Real>(u: T, v: T, tl_ca: bool, tl_cb: bool, tl_ab: bool, eps: T) -> bool {
-    let z = T::zero();
-    let o = T::one();
-    (u > z || (u > -eps && tl_ca))
-        && (v > z || (v > -eps && tl_cb))
-        && (u + v < o || (u + v < o + eps && tl_ab))
+struct Bounds {
+    min_x: usize,
+    max_x: usize,
+    min_y: usize,
+    max_y: usize,
 }
 
-fn is_top_left<T: Real>(sx: T, sy: T, ex: T, ey: T, eps: T) -> bool {
-    let dy = ey - sy;
-    if dy.abs() < eps {
-        sx > ex
-    } else {
-        dy < T::zero()
+struct TopLeft {
+    ca: bool,
+    cb: bool,
+    ab: bool,
+}
+
+struct TriSetup {
+    bounds: Bounds,
+    top_left: TopLeft,
+    normal: Vec3f,
+    u_grad: Vec2f,
+    v_grad: Vec2f,
+    uv0: Vec2f,
+    z_c: f32,
+    dz_du: f32,
+    dz_dv: f32,
+}
+
+impl Bounds {
+    fn new(a: Vec3f, b: Vec3f, c: Vec3f) -> Self {
+        let (min_x, max_x) = min_max(a.x(), b.x(), c.x());
+        let (min_y, max_y) = min_max(a.y(), b.y(), c.y());
+        Self {
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+        }
+    }
+
+    fn range_y(&self, max: usize) -> RangeInclusive<usize> {
+        self.min_y..=min(self.max_y, max)
+    }
+    fn range_x(&self, max: usize) -> RangeInclusive<usize> {
+        self.min_x..=min(self.max_x, max)
     }
 }
 
-fn min_max<T: Real>(a: T, b: T, c: T) -> (usize, usize) {
+impl TopLeft {
+    fn new(a: Vec3f, b: Vec3f, c: Vec3f) -> Self {
+        Self {
+            ca: is_top_left(c.x(), c.y(), a.x(), a.y()),
+            cb: is_top_left(c.x(), c.y(), b.x(), b.y()),
+            ab: is_top_left(a.x(), a.y(), b.x(), b.y()),
+        }
+    }
+}
+
+fn min_max(a: f32, b: f32, c: f32) -> (usize, usize) {
     (
-        a.min(b).min(c).floor().to_usize().unwrap(),
-        a.max(b).max(c).ceil().to_usize().unwrap(),
+        a.min(b).min(c).floor() as usize,
+        a.max(b).max(c).ceil() as usize,
     )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Rasterizer<T, N>
-// ═══════════════════════════════════════════════════════════════════════════
-
-pub struct Rasterizer<T: Real, const N: usize> {
-    pub samples: [(T, T); N],
-}
-
-impl<T: Real + ConstZero> Rasterizer<T, 1> {
-    #[allow(unused)]
-    pub const NON_MSAA: Self = Self {
-        samples: [(T::ZERO, T::ZERO)],
-    };
-}
-
-macro_rules! impl_msaa_4x {
-    ($T:ty) => {
-        #[allow(unused)]
-        impl Rasterizer<$T, 4> {
-            pub const MSAA_4X: Self = Self {
-                samples: [
-                    (-0.125, -0.375),
-                    (0.375, -0.125),
-                    (-0.375, 0.125),
-                    (0.125, 0.375),
-                ],
-            };
-        }
-    };
-}
-
-impl_msaa_4x!(f32);
-impl_msaa_4x!(f64);
-
-impl<T: Real, const N: usize> Rasterizer<T, N> {
-    #[allow(unused)]
-    pub const fn new(samples: [(T, T); N]) -> Self {
-        Self { samples }
+fn is_top_left(sx: f32, sy: f32, ex: f32, ey: f32) -> bool {
+    let dy = ey - sy;
+    if dy.abs() < f32::EPSILON {
+        sx > ex
+    } else {
+        dy < 0.0
     }
+}
 
-    pub fn rasterize(
-        &self,
-        buf: &mut RenderBuffer<Fragment<T, N>>,
-        a: Vec4<T>,
-        b: Vec4<T>,
-        c: Vec4<T>,
-        color: Color,
-    ) {
-        let (o, i, two) = (T::zero(), T::one(), T::from(2.0).unwrap());
-        let (w, h) = (
-            T::from(buf.width()).unwrap(),
-            T::from(buf.height()).unwrap(),
-        );
-        let vp = Mat4::from([
-            [w / two, o, o, w / two],
-            [o, -h / two, o, h / two],
-            [o, o, i, o],
-            [o, o, o, i],
-        ]);
+impl TriSetup {
+    fn new(sa: Vec3f, sb: Vec3f, sc: Vec3f) -> Self {
+        let bounds = Bounds::new(sa, sb, sc);
+        let top_left = TopLeft::new(sa, sb, sc);
+        let normal = (sa - sc).cross(&(sb - sc)).normalize();
 
-        let sa = (vp * a).perspective_divide().unwrap();
-        let sb = (vp * b).perspective_divide().unwrap();
-        let sc = (vp * c).perspective_divide().unwrap();
         let (ea, eb) = (sa - sc, sb - sc);
-
-        let inv = i / (ea.x() * eb.y() - ea.y() * eb.x());
+        let inv = 1.0 / (ea.x() * eb.y() - ea.y() * eb.x());
         let dux = eb.y() * inv;
         let duy = -eb.x() * inv;
         let dvx = -ea.y() * inv;
         let dvy = ea.x() * inv;
 
-        let edge_eps = T::from(1e-5).unwrap();
-        let top_left_eps = T::epsilon();
+        let px0 = bounds.min_x as f32 + 0.5 - sc.x();
+        let py0 = bounds.min_y as f32 + 0.5 - sc.y();
+        let u0 = (eb.y() * px0 - eb.x() * py0) * inv;
+        let v0 = (ea.x() * py0 - ea.y() * px0) * inv;
 
-        let tl_ca = is_top_left(sc.x(), sc.y(), sa.x(), sa.y(), top_left_eps);
-        let tl_cb = is_top_left(sc.x(), sc.y(), sb.x(), sb.y(), top_left_eps);
-        let tl_ab = is_top_left(sa.x(), sa.y(), sb.x(), sb.y(), top_left_eps);
+        Self {
+            bounds,
+            top_left,
+            normal,
+            u_grad: Vec2f::new(dux, duy),
+            v_grad: Vec2f::new(dvx, dvy),
+            uv0: Vec2f::new(u0, v0),
+            z_c: sc.z(),
+            dz_du: ea.z(),
+            dz_dv: eb.z(),
+        }
+    }
 
-        let (min_x, max_x) = min_max(sa.x(), sb.x(), sc.x());
-        let (min_y, max_y) = min_max(sa.y(), sb.y(), sc.y());
+    #[inline]
+    fn row_start(&self, y: usize) -> (f32, f32) {
+        let dy = (y - self.bounds.min_y) as f32;
+        (
+            self.uv0.x() + dy * self.u_grad.y(),
+            self.uv0.y() + dy * self.v_grad.y(),
+        )
+    }
 
-        let half = T::from(0.5).unwrap();
-        let px0 = T::from(min_x).unwrap() + half - sc.x();
-        let py0 = T::from(min_y).unwrap() + half - sc.y();
-        let mut u0 = (eb.y() * px0 - eb.x() * py0) * inv;
-        let mut v0 = (ea.x() * py0 - ea.y() * px0) * inv;
+    #[inline]
+    fn is_inside(&self, u: f32, v: f32) -> bool {
+        const EPS: f32 = 1e-5;
+        let tl = &self.top_left;
+        (u > 0.0 || (u > -EPS && tl.ca))
+            && (v > 0.0 || (v > -EPS && tl.cb))
+            && (u + v < 1.0 || (u + v < 1.0 + EPS && tl.ab))
+    }
+}
 
-        for y in min_y..=min(max_y, buf.height() - 1) {
-            let (mut u, mut v) = (u0, v0);
-            for x in min_x..=min(max_x, buf.width() - 1) {
-                let frag = buf.get_mut(x, y);
-                for i in 0..N {
-                    let (sx, sy) = self.samples[i];
-                    let us = u + sx * dux + sy * duy;
-                    let vs = v + sx * dvx + sy * dvy;
-                    if is_inside(us, vs, tl_ca, tl_cb, tl_ab, edge_eps) {
-                        let z = sc.z() + us * ea.z() + vs * eb.z();
-                        if z < frag.depth_buf[i] {
-                            frag.depth_buf[i] = z;
-                            frag.color_buf[i] = color;
-                        }
+// ═══════════════════════════════════════════════════════════════════════════
+// scanline
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn scan_triangle<const N: usize>(
+    buf: &mut RenderBuffer<Fragment<N>>,
+    setup: &TriSetup,
+    samples: &[Vec2f; N],
+    shader: &impl Shader,
+) {
+    for y in setup.bounds.range_y(buf.height() - 1) {
+        let (mut u, mut v) = setup.row_start(y);
+        for x in setup.bounds.range_x(buf.width() - 1) {
+            let frag = buf.get_mut(x, y);
+            for i in 0..N {
+                let us = u + setup.u_grad * samples[i];
+                let vs = v + setup.v_grad * samples[i];
+                if setup.is_inside(us, vs) {
+                    let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
+                    if z < frag.depth_buf[i] {
+                        frag.depth_buf[i] = z;
+                        frag.color_buf[i] = shader.shade(us, vs, z, setup.normal);
                     }
                 }
-                u = u + dux;
-                v = v + dvx;
             }
-            u0 = u0 + duy;
-            v0 = v0 + dvy;
+            u = u + setup.u_grad.x();
+            v = v + setup.v_grad.x();
         }
     }
+}
 
-    /// 三角形迭代 —— 遍历索引并光栅化每个三角形。
+// ═══════════════════════════════════════════════════════════════════════════
+// Rasterizer<N>
+// ═══════════════════════════════════════════════════════════════════════════
+
+pub struct Rasterizer<const N: usize> {
+    pub samples: [Vec2f; N],
+}
+
+impl Rasterizer<1> {
+    #[allow(unused)]
+    pub const NON_MSAA: Self = Self {
+        samples: [Vec2f::ZERO],
+    };
+}
+
+impl Rasterizer<4> {
+    #[allow(unused)]
+    pub const MSAA_4X: Self = Self {
+        samples: [
+            Vec2f::new(-0.125, -0.375),
+            Vec2f::new(0.375, -0.125),
+            Vec2f::new(-0.375, 0.125),
+            Vec2f::new(0.125, 0.375),
+        ],
+    };
+}
+
+impl<const N: usize> Rasterizer<N> {
+    #[allow(unused)]
+    pub const fn new(samples: [Vec2f; N]) -> Self {
+        Self { samples }
+    }
+
+    pub fn rasterize(
+        &self,
+        buf: &mut RenderBuffer<Fragment<N>>,
+        a: Vec4f,
+        b: Vec4f,
+        c: Vec4f,
+        shader: &impl Shader,
+    ) {
+        let (w, h) = (buf.width() as f32, buf.height() as f32);
+        let vp = transform::translate(Vec3f::new(w / 2.0, h / 2.0, 0.0))
+            * transform::scale(Vec3f::new(w / 2.0, -h / 2.0, 1.0));
+
+        let sa = (vp * a).perspective_divide().unwrap();
+        let sb = (vp * b).perspective_divide().unwrap();
+        let sc = (vp * c).perspective_divide().unwrap();
+
+        let setup = TriSetup::new(sa, sb, sc);
+
+        scan_triangle(buf, &setup, &self.samples, shader);
+    }
+
     pub fn draw_mesh(
         &self,
-        buf: &mut RenderBuffer<Fragment<T, N>>,
-        vertices: &[Vec4<T>],
+        buf: &mut RenderBuffer<Fragment<N>>,
+        vertices: &[Vec4f],
         indices: &[[usize; 3]],
-        color: Color,
+        shader: impl Shader,
     ) {
         for &[i0, i1, i2] in indices {
-            self.rasterize(buf, vertices[i0], vertices[i1], vertices[i2], color);
+            self.rasterize(buf, vertices[i0], vertices[i1], vertices[i2], &shader);
         }
     }
 
-    pub fn resolve(&self, src: &RenderBuffer<Fragment<T, N>>, fb: &mut RenderBuffer<Color>) {
+    pub fn resolve(&self, src: &RenderBuffer<Fragment<N>>, fb: &mut RenderBuffer<Color>) {
         for y in 0..src.height() {
             for x in 0..src.width() {
                 fb[(x, y)] = Color::average(&src[(x, y)].color_buf);
