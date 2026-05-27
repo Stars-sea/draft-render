@@ -1,6 +1,7 @@
+use std::cell::Ref;
 use num_traits::real::Real;
 use num_traits::{ConstOne, ConstZero, One, Zero};
-use std::ops::{Add, BitOr, Index, IndexMut, Mul, Neg, Sub};
+use std::ops::{Add, BitOr, Index, IndexMut, Mul, MulAssign, Neg, Sub};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vector<T: Real, const N: usize>([T; N]);

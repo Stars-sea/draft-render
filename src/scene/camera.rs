@@ -3,9 +3,11 @@ use crate::scene::Projection;
 use num_traits::{ConstZero, Zero};
 
 pub struct Camera {
-    pub position: Vec3f,
-    pub rotator: Rotator<f32>,
-    pub proj: Projection,
+    position: Vec3f,
+    rotator: Rotator<f32>,
+    proj: Projection,
+
+    vp_cache: Option<Mat4f>,
 }
 
 impl Camera {
@@ -14,10 +16,47 @@ impl Camera {
             position,
             rotator,
             proj,
+            vp_cache: None,
         }
     }
 
-    pub fn view_matrix(&self) -> Mat4f {
+    pub fn position(&self) -> Vec3f {
+        self.position
+    }
+    pub fn rotator(&self) -> Rotator<f32> {
+        self.rotator
+    }
+    pub fn projection(&self) -> &Projection {
+        &self.proj
+    }
+
+    pub fn set_position(&mut self, position: Vec3f) {
+        self.position = position;
+        self.vp_cache = None;
+    }
+    pub fn set_rotator(&mut self, rotator: Rotator<f32>) {
+        self.rotator = rotator;
+        self.vp_cache = None;
+    }
+    pub fn set_projection(&mut self, projection: Projection) {
+        self.proj = projection;
+        self.vp_cache = None;
+    }
+
+    pub fn with_position(mut self, position: Vec3f) -> Self {
+        self.set_position(position);
+        self
+    }
+    pub fn with_rotation(mut self, rotator: impl Fn(Rotator<f32>) -> Rotator<f32>) -> Self {
+        self.set_rotator(rotator(self.rotator));
+        self
+    }
+    pub fn with_projection(mut self, projection: Projection) -> Self {
+        self.set_projection(projection);
+        self
+    }
+
+    fn view_matrix(&self) -> Mat4f {
         let rotation: Quaternion<f32> = self.rotator.into();
         let forward = rotation.rotate_vector(Vec3f::unit_z());
         let up = rotation.rotate_vector(Vec3f::unit_y());
@@ -35,8 +74,10 @@ impl Camera {
         r.inverse().unwrap() * t
     }
 
-    pub fn vp_matrix(&self, aspect: f32) -> Mat4f {
-        self.proj.projection_matrix(aspect) * self.view_matrix()
+    pub fn vp_matrix(&mut self, aspect: f32) -> Mat4f {
+        let vp = self.proj.projection_matrix(aspect) * self.view_matrix();
+        self.vp_cache = Some(vp);
+        vp
     }
 }
 

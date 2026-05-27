@@ -1,12 +1,12 @@
 #![allow(unused)]
 
 mod camera;
+mod light;
 mod mesh;
 mod object;
 mod projection;
 mod scene;
 mod transform;
-mod light;
 
 pub use camera::Camera;
 pub use light::{DirectionalLight, Light};

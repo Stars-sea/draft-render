@@ -2,7 +2,7 @@
 
 use super::vector::Vector;
 use num_traits::real::Real;
-use num_traits::{One, Zero};
+use num_traits::{ConstOne, One, Zero};
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
 #[derive(Debug, Clone, Copy)]
@@ -11,7 +11,7 @@ pub struct Matrix<T: Real, const R: usize, const C: usize>([[T; C]; R]);
 // Constructors
 
 impl<T: Real, const R: usize, const C: usize> Matrix<T, R, C> {
-    pub fn fill(n: T) -> Matrix<T, R, C> {
+    pub const fn fill(n: T) -> Matrix<T, R, C> {
         Self([[n; C]; R])
     }
 }

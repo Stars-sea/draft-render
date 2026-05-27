@@ -29,21 +29,33 @@ impl Transform {
         self.scale
     }
 
-    pub fn with_translation(&mut self, translation: Vec3f) -> &mut Self {
+    pub fn set_translation(&mut self, translation: Vec3f) {
         self.translation = translation;
         self.matrix_cache = None;
-        self
     }
 
-    pub fn with_rotation(&mut self, rotation: Quaternion<f32>) -> &mut Self {
+    pub fn set_rotation(&mut self, rotation: Quaternion<f32>) {
         self.rotation = rotation;
         self.matrix_cache = None;
+    }
+
+    pub fn set_scale(&mut self, scale: Vec3f) {
+        self.scale = scale;
+        self.matrix_cache = None;
+    }
+
+    pub fn with_translation(mut self, translation: Vec3f) -> Self {
+        self.set_translation(translation);
         self
     }
 
-    pub fn with_scale(&mut self, scale: Vec3f) -> &mut Self {
-        self.scale = scale;
-        self.matrix_cache = None;
+    pub fn with_rotation(mut self, rotation: Quaternion<f32>) -> Self {
+        self.set_rotation(rotation);
+        self
+    }
+
+    pub fn with_scale(mut self, scale: Vec3f) -> Self {
+        self.set_scale(scale);
         self
     }
 

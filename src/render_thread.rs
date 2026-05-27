@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::linalg::{Mat4f, Vec4f};
+use crate::linalg::{Mat4f, Vec3f, Vec4f};
 use crate::pipeline::{BlinnPhongShader, Fragment, Rasterizer, RenderBuffer};
 use crate::scene::{Light, Mesh};
 
@@ -18,6 +18,7 @@ pub struct RenderObject {
     pub mesh: Arc<Mesh>,
     pub mvp: Mat4f,
     pub color: Color,
+    pub face_normals: Vec<Vec3f>,
 }
 
 pub enum RenderResult {
@@ -47,7 +48,13 @@ pub fn render_loop<const N: usize>(
         for obj in &job.objects {
             let vertices = transform_vertices(&obj.mesh, &obj.mvp);
             let shader = BlinnPhongShader::new(obj.color, job.lights.clone());
-            rasterizer.draw_mesh(&mut frag_buf, &vertices, &obj.mesh.indices, shader);
+            rasterizer.draw_mesh(
+                &mut frag_buf,
+                &vertices,
+                &obj.mesh.indices,
+                &obj.face_normals,
+                shader,
+            );
         }
 
         rasterizer.resolve(&frag_buf, &mut frame_buffer);

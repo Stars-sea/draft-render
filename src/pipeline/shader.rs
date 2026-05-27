@@ -1,6 +1,8 @@
 use crate::color::Color;
 use crate::linalg::Vec3f;
 use crate::scene::Light;
+
+use num_traits::ConstZero;
 use std::sync::Arc;
 
 pub trait Shader {
@@ -16,14 +18,19 @@ pub struct BlinnPhongShader {
 
 impl BlinnPhongShader {
     pub fn new(color: Color, lights: Vec<Arc<dyn Light + Send + Sync>>) -> Self {
-        Self { color, specular: Color::WHITE, shininess: 32.0, lights }
+        Self {
+            color,
+            specular: Color::WHITE,
+            shininess: 32.0,
+            lights,
+        }
     }
 }
 
 impl Shader for BlinnPhongShader {
     fn shade(&self, _u: f32, _v: f32, _z: f32, normal: Vec3f) -> Color {
         let v = -Vec3f::unit_z();
-        let origin = Vec3f::new(0.0, 0.0, 0.0);
+        let origin = Vec3f::ZERO;
 
         let mut diff_light = Color::BLACK;
         let mut spec_light = Color::BLACK;

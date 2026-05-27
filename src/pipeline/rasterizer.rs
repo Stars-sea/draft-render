@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::linalg::{Mat4f, Vec2f, Vec3f, Vec4f, transform};
+use crate::linalg::{transform, Vec2f, Vec3f, Vec4f};
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
 use crate::pipeline::shader::Shader;
@@ -28,7 +28,6 @@ struct TopLeft {
 struct TriSetup {
     bounds: Bounds,
     top_left: TopLeft,
-    normal: Vec3f,
     u_grad: Vec2f,
     v_grad: Vec2f,
     uv0: Vec2f,
@@ -87,8 +86,6 @@ impl TriSetup {
     fn new(sa: Vec3f, sb: Vec3f, sc: Vec3f) -> Self {
         let bounds = Bounds::new(sa, sb, sc);
         let top_left = TopLeft::new(sa, sb, sc);
-        let normal = (sa - sc).cross(&(sb - sc)).normalize();
-
         let (ea, eb) = (sa - sc, sb - sc);
         let inv = 1.0 / (ea.x() * eb.y() - ea.y() * eb.x());
         let dux = eb.y() * inv;
@@ -104,7 +101,6 @@ impl TriSetup {
         Self {
             bounds,
             top_left,
-            normal,
             u_grad: Vec2f::new(dux, duy),
             v_grad: Vec2f::new(dvx, dvy),
             uv0: Vec2f::new(u0, v0),
@@ -141,6 +137,7 @@ fn scan_triangle<const N: usize>(
     buf: &mut RenderBuffer<Fragment<N>>,
     setup: &TriSetup,
     samples: &[Vec2f; N],
+    normal: Vec3f,
     shader: &impl Shader,
 ) {
     for y in setup.bounds.range_y(buf.height() - 1) {
@@ -154,7 +151,7 @@ fn scan_triangle<const N: usize>(
                     let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
                     if z < frag.depth_buf[i] {
                         frag.depth_buf[i] = z;
-                        frag.color_buf[i] = shader.shade(us, vs, z, setup.normal);
+                        frag.color_buf[i] = shader.shade(us, vs, z, normal);
                     }
                 }
             }
@@ -203,6 +200,7 @@ impl<const N: usize> Rasterizer<N> {
         a: Vec4f,
         b: Vec4f,
         c: Vec4f,
+        normal: Vec3f,
         shader: &impl Shader,
     ) {
         let (w, h) = (buf.width() as f32, buf.height() as f32);
@@ -215,7 +213,7 @@ impl<const N: usize> Rasterizer<N> {
 
         let setup = TriSetup::new(sa, sb, sc);
 
-        scan_triangle(buf, &setup, &self.samples, shader);
+        scan_triangle(buf, &setup, &self.samples, normal, shader);
     }
 
     pub fn draw_mesh(
@@ -223,10 +221,11 @@ impl<const N: usize> Rasterizer<N> {
         buf: &mut RenderBuffer<Fragment<N>>,
         vertices: &[Vec4f],
         indices: &[[usize; 3]],
+        normals: &[Vec3f],
         shader: impl Shader,
     ) {
-        for &[i0, i1, i2] in indices {
-            self.rasterize(buf, vertices[i0], vertices[i1], vertices[i2], &shader);
+        for (t, &[i0, i1, i2]) in indices.iter().enumerate() {
+            self.rasterize(buf, vertices[i0], vertices[i1], vertices[i2], normals[t], &shader);
         }
     }
 
