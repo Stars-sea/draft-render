@@ -1,7 +1,7 @@
 ﻿#![allow(unused)]
 
 use bytemuck::{Pod, Zeroable};
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Mul};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
 #[repr(transparent)]
@@ -62,30 +62,34 @@ impl Add<Color> for Color {
     type Output = Color;
 
     fn add(self, rhs: Color) -> Color {
-        Color(self.0.wrapping_add(rhs.0))
+        Color::rgb(
+            self.r().saturating_add(rhs.r()),
+            self.g().saturating_add(rhs.g()),
+            self.b().saturating_add(rhs.b()),
+        )
     }
 }
 
-impl Sub<Color> for Color {
+impl Mul<f32> for Color {
     type Output = Color;
 
-    fn sub(self, rhs: Color) -> Color {
-        Color(self.0.wrapping_sub(rhs.0))
+    fn mul(self, factor: f32) -> Self::Output {
+        Color::rgb(
+            (self.r() as f32 * factor).min(255.0) as u8,
+            (self.g() as f32 * factor).min(255.0) as u8,
+            (self.b() as f32 * factor).min(255.0) as u8,
+        )
     }
 }
 
-impl Mul<u32> for Color {
+impl Mul<Color> for Color {
     type Output = Color;
 
-    fn mul(self, rhs: u32) -> Self::Output {
-        Color(self.0.wrapping_mul(rhs))
-    }
-}
-
-impl Div<u32> for Color {
-    type Output = Color;
-
-    fn div(self, rhs: u32) -> Self::Output {
-        Color(self.0 / rhs)
+    fn mul(self, rhs: Color) -> Self::Output {
+        Color::rgb(
+            ((self.r() as u16 * rhs.r() as u16) / 255) as u8,
+            ((self.g() as u16 * rhs.g() as u16) / 255) as u8,
+            ((self.b() as u16 * rhs.b() as u16) / 255) as u8,
+        )
     }
 }

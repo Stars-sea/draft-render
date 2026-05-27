@@ -1,5 +1,6 @@
 use crate::linalg::{Mat3, Mat4, Quaternion, Vec3};
 use num_traits::real::Real;
+use num_traits::{ConstOne, ConstZero, FloatConst};
 
 /// Rotation stored as Euler angles (yaw: Y, pitch: X, roll: Z)
 #[derive(Debug, Clone, Copy)]
@@ -87,7 +88,7 @@ impl<T: Real> From<Quaternion<T>> for Rotator<T> {
     }
 }
 
-impl<T: Real> Into<Quaternion<T>> for Rotator<T> {
+impl<T: Real + ConstZero + ConstOne> Into<Quaternion<T>> for Rotator<T> {
     fn into(self) -> Quaternion<T> {
         let qy = Quaternion::from_axis_angle(Vec3::unit_y(), self.yaw);
         let qp = Quaternion::from_axis_angle(Vec3::unit_x(), self.pitch);
@@ -96,7 +97,7 @@ impl<T: Real> Into<Quaternion<T>> for Rotator<T> {
     }
 }
 
-impl<T: Real> Into<Mat4<T>> for Rotator<T> {
+impl<T: Real + ConstZero + ConstOne> Into<Mat4<T>> for Rotator<T> {
     fn into(self) -> Mat4<T> {
         let (sy, cy) = self.yaw.sin_cos();
         let (sx, cx) = self.pitch.sin_cos();
