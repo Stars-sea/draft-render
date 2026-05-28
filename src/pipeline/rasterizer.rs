@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::linalg::{Vec2f, Vec3f, Vec4f, transform};
+use crate::linalg::{Mat4f, Vec2f, Vec3f, Vec4f, transform};
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
 use crate::pipeline::shader::Shader;
@@ -149,17 +149,23 @@ fn scan_triangle<const N: usize>(
         let (mut u, mut v) = setup.row_start(y);
         for x in setup.bounds.range_x(buf.width() - 1) {
             let frag = buf.get_mut(x, y);
+            let mut shaded = None;
             for i in 0..N {
                 let us = u + setup.u_grad * samples[i];
                 let vs = v + setup.v_grad * samples[i];
-                if setup.is_inside(us, vs) {
-                    let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
-                    if z < frag.depth_buf[i] {
-                        frag.depth_buf[i] = z;
-                        let wp = world_c + w_du * us + w_dv * vs;
-                        frag.color_buf[i] = shader.shade(us, vs, z, normal, wp);
-                    }
+                if !setup.is_inside(us, vs) {
+                    continue;
                 }
+                let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
+                if z >= frag.depth_buf[i] {
+                    continue;
+                }
+                let color = *shaded.get_or_insert_with(|| {
+                    let wp = world_c + w_du * u + w_dv * v;
+                    shader.shade(Vec2f::new(u, v), z, normal, wp)
+                });
+                frag.depth_buf[i] = z;
+                frag.color_buf[i] = color;
             }
             u = u + setup.u_grad.x();
             v = v + setup.v_grad.x();
@@ -200,9 +206,15 @@ impl<const N: usize> Rasterizer<N> {
         Self { samples }
     }
 
-    pub fn rasterize(
+    fn viewport_matrix(w: f32, h: f32) -> Mat4f {
+        transform::translate(Vec3f::new(w / 2.0, h / 2.0, 0.0))
+            * transform::scale(Vec3f::new(w / 2.0, -h / 2.0, 1.0))
+    }
+
+    fn rasterize(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
+        vp: Mat4f,
         a: Vec4f,
         b: Vec4f,
         c: Vec4f,
@@ -212,10 +224,6 @@ impl<const N: usize> Rasterizer<N> {
         world_c: Vec3f,
         shader: &impl Shader,
     ) {
-        let (w, h) = (buf.width() as f32, buf.height() as f32);
-        let vp = transform::translate(Vec3f::new(w / 2.0, h / 2.0, 0.0))
-            * transform::scale(Vec3f::new(w / 2.0, -h / 2.0, 1.0));
-
         let sa = (vp * a).perspective_divide().unwrap();
         let sb = (vp * b).perspective_divide().unwrap();
         let sc = (vp * c).perspective_divide().unwrap();
@@ -243,16 +251,32 @@ impl<const N: usize> Rasterizer<N> {
         normals: &[Vec3f],
         shader: impl Shader,
     ) {
+        let vp_matrix = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
+
         for (t, &[i0, i1, i2]) in indices.iter().enumerate() {
-            self.rasterize(
-                buf,
-                vertices[i0],
-                vertices[i1],
-                vertices[i2],
-                normals[t],
+            let normal = normals[t];
+            let (world_a, world_b, world_c) = (
                 world_positions[i0],
                 world_positions[i1],
                 world_positions[i2],
+            );
+            // Back-face culling: view direction from vertex toward camera (origin).
+            // Front-facing when outward normal faces toward the camera.
+            let view_dir = -world_a;
+            if normal.dot(&view_dir) <= 0.0 {
+                continue;
+            }
+
+            self.rasterize(
+                buf,
+                vp_matrix,
+                vertices[i0],
+                vertices[i1],
+                vertices[i2],
+                normal,
+                world_a,
+                world_b,
+                world_c,
                 &shader,
             );
         }
