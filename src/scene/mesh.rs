@@ -1,21 +1,24 @@
-use crate::linalg::Vec3f;
+use glam::Vec3A;
 
 pub struct Mesh {
-    pub vertices: Vec<Vec3f>,
+    pub vertices: Vec<Vec3A>,
     pub indices: Vec<[usize; 3]>,
 }
 
 pub struct MeshBuilder {
-    vertices: Vec<Vec3f>,
+    vertices: Vec<Vec3A>,
     indices: Vec<[usize; 3]>,
 }
 
 impl MeshBuilder {
     pub fn new() -> Self {
-        Self { vertices: Vec::new(), indices: Vec::new() }
+        Self {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+        }
     }
 
-    pub fn vertex(mut self, v: Vec3f) -> Self {
+    pub fn vertex(mut self, v: Vec3A) -> Self {
         self.vertices.push(v);
         self
     }
@@ -26,6 +29,9 @@ impl MeshBuilder {
     }
 
     pub fn build(self) -> Mesh {
-        Mesh { vertices: self.vertices, indices: self.indices }
+        Mesh {
+            vertices: self.vertices,
+            indices: self.indices,
+        }
     }
 }

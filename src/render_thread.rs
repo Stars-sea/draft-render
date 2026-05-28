@@ -1,7 +1,7 @@
 use crate::color::Color;
-use crate::linalg::{Mat4f, Vec3f, Vec4f};
 use crate::pipeline::{BlinnPhongShader, Fragment, Rasterizer, RenderBuffer};
 use crate::scene::{Light, Mesh};
+use glam::{Mat4, Vec3A, Vec4};
 
 use bytemuck::cast_slice;
 use std::sync::Arc;
@@ -16,10 +16,10 @@ pub struct RenderJob {
 
 pub struct RenderObject {
     pub mesh: Arc<Mesh>,
-    pub mvp: Mat4f,
+    pub mvp: Mat4,
     pub color: Color,
-    pub face_normals: Vec<Vec3f>,
-    pub world_positions: Vec<Vec3f>,
+    pub face_normals: Vec<Vec3A>,
+    pub world_positions: Vec<Vec3A>,
 }
 
 pub enum RenderResult {
@@ -68,9 +68,9 @@ pub fn render_loop<const N: usize>(
     }
 }
 
-fn transform_vertices(mesh: &Mesh, mvp: &Mat4f) -> Vec<Vec4f> {
+fn transform_vertices(mesh: &Mesh, mvp: &Mat4) -> Vec<Vec4> {
     mesh.vertices
         .iter()
-        .map(|v| *mvp * Vec4f::from_vec3(*v, 1.0))
+        .map(|v| *mvp * v.extend(1.0))
         .collect()
 }

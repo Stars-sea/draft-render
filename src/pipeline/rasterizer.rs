@@ -1,10 +1,9 @@
 use crate::color::Color;
-use crate::linalg::{Mat4f, Vec2f, Vec3f, Vec4f, transform};
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
 use crate::pipeline::shader::Shader;
 
-use num_traits::ConstZero;
+use glam::{Mat4, Vec2, Vec3A, Vec4, Vec4Swizzles};
 use std::cmp::min;
 use std::ops::RangeInclusive;
 
@@ -28,18 +27,18 @@ struct TopLeft {
 struct TriSetup {
     bounds: Bounds,
     top_left: TopLeft,
-    u_grad: Vec2f,
-    v_grad: Vec2f,
-    uv0: Vec2f,
+    u_grad: Vec2,
+    v_grad: Vec2,
+    uv0: Vec2,
     z_c: f32,
     dz_du: f32,
     dz_dv: f32,
 }
 
 impl Bounds {
-    fn new(a: Vec3f, b: Vec3f, c: Vec3f) -> Self {
-        let (min_x, max_x) = min_max(a.x(), b.x(), c.x());
-        let (min_y, max_y) = min_max(a.y(), b.y(), c.y());
+    fn new(a: Vec3A, b: Vec3A, c: Vec3A) -> Self {
+        let (min_x, max_x) = min_max(a.x, b.x, c.x);
+        let (min_y, max_y) = min_max(a.y, b.y, c.y);
         Self {
             min_x,
             max_x,
@@ -57,11 +56,11 @@ impl Bounds {
 }
 
 impl TopLeft {
-    fn new(a: Vec3f, b: Vec3f, c: Vec3f) -> Self {
+    fn new(a: Vec3A, b: Vec3A, c: Vec3A) -> Self {
         Self {
-            ca: is_top_left(c.x(), c.y(), a.x(), a.y()),
-            cb: is_top_left(c.x(), c.y(), b.x(), b.y()),
-            ab: is_top_left(a.x(), a.y(), b.x(), b.y()),
+            ca: is_top_left(c.x, c.y, a.x, a.y),
+            cb: is_top_left(c.x, c.y, b.x, b.y),
+            ab: is_top_left(a.x, a.y, b.x, b.y),
         }
     }
 }
@@ -82,31 +81,42 @@ fn is_top_left(sx: f32, sy: f32, ex: f32, ey: f32) -> bool {
     }
 }
 
+fn perspective_divide(v: Vec4) -> Option<Vec3A> {
+    // w == 0 only when the vertex lies on the camera plane (z_view = 0).
+    // Near-plane clipping (n = 0.1) guarantees |w| ≥ 0.1 for every visible
+    // vertex, so exact comparison against 0.0 is sound — no rounding hazard.
+    if v.w == 0.0 {
+        return None;
+    }
+    let r = 1.0 / v.w;
+    Some((v.xyz() * r).into())
+}
+
 impl TriSetup {
-    fn new(sa: Vec3f, sb: Vec3f, sc: Vec3f) -> Self {
+    fn new(sa: Vec3A, sb: Vec3A, sc: Vec3A) -> Self {
         let bounds = Bounds::new(sa, sb, sc);
         let top_left = TopLeft::new(sa, sb, sc);
         let (ea, eb) = (sa - sc, sb - sc);
-        let inv = 1.0 / (ea.x() * eb.y() - ea.y() * eb.x());
-        let dux = eb.y() * inv;
-        let duy = -eb.x() * inv;
-        let dvx = -ea.y() * inv;
-        let dvy = ea.x() * inv;
+        let inv = 1.0 / (ea.x * eb.y - ea.y * eb.x);
+        let dux = eb.y * inv;
+        let duy = -eb.x * inv;
+        let dvx = -ea.y * inv;
+        let dvy = ea.x * inv;
 
-        let px0 = bounds.min_x as f32 + 0.5 - sc.x();
-        let py0 = bounds.min_y as f32 + 0.5 - sc.y();
-        let u0 = (eb.y() * px0 - eb.x() * py0) * inv;
-        let v0 = (ea.x() * py0 - ea.y() * px0) * inv;
+        let px0 = bounds.min_x as f32 + 0.5 - sc.x;
+        let py0 = bounds.min_y as f32 + 0.5 - sc.y;
+        let u0 = (eb.y * px0 - eb.x * py0) * inv;
+        let v0 = (ea.x * py0 - ea.y * px0) * inv;
 
         Self {
             bounds,
             top_left,
-            u_grad: Vec2f::new(dux, duy),
-            v_grad: Vec2f::new(dvx, dvy),
-            uv0: Vec2f::new(u0, v0),
-            z_c: sc.z(),
-            dz_du: ea.z(),
-            dz_dv: eb.z(),
+            u_grad: Vec2::new(dux, duy),
+            v_grad: Vec2::new(dvx, dvy),
+            uv0: Vec2::new(u0, v0),
+            z_c: sc.z,
+            dz_du: ea.z,
+            dz_dv: eb.z,
         }
     }
 
@@ -114,8 +124,8 @@ impl TriSetup {
     fn row_start(&self, y: usize) -> (f32, f32) {
         let dy = (y - self.bounds.min_y) as f32;
         (
-            self.uv0.x() + dy * self.u_grad.y(),
-            self.uv0.y() + dy * self.v_grad.y(),
+            self.uv0.x + dy * self.u_grad.y,
+            self.uv0.y + dy * self.v_grad.y,
         )
     }
 
@@ -136,11 +146,11 @@ impl TriSetup {
 fn scan_triangle<const N: usize>(
     buf: &mut RenderBuffer<Fragment<N>>,
     setup: &TriSetup,
-    samples: &[Vec2f; N],
-    normal: Vec3f,
-    world_a: Vec3f,
-    world_b: Vec3f,
-    world_c: Vec3f,
+    samples: &[Vec2; N],
+    normal: Vec3A,
+    world_a: Vec3A,
+    world_b: Vec3A,
+    world_c: Vec3A,
     shader: &impl Shader,
 ) {
     let w_du = world_a - world_c;
@@ -151,8 +161,8 @@ fn scan_triangle<const N: usize>(
             let frag = buf.get_mut(x, y);
             let mut shaded = None;
             for i in 0..N {
-                let us = u + setup.u_grad * samples[i];
-                let vs = v + setup.v_grad * samples[i];
+                let us = u + setup.u_grad.dot(samples[i]);
+                let vs = v + setup.v_grad.dot(samples[i]);
                 if !setup.is_inside(us, vs) {
                     continue;
                 }
@@ -162,13 +172,13 @@ fn scan_triangle<const N: usize>(
                 }
                 let color = *shaded.get_or_insert_with(|| {
                     let wp = world_c + w_du * u + w_dv * v;
-                    shader.shade(Vec2f::new(u, v), z, normal, wp)
+                    shader.shade(Vec2::new(u, v), z, normal, wp)
                 });
                 frag.depth_buf[i] = z;
                 frag.color_buf[i] = color;
             }
-            u = u + setup.u_grad.x();
-            v = v + setup.v_grad.x();
+            u = u + setup.u_grad.x;
+            v = v + setup.v_grad.x;
         }
     }
 }
@@ -178,55 +188,52 @@ fn scan_triangle<const N: usize>(
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub struct Rasterizer<const N: usize> {
-    pub samples: [Vec2f; N],
+    pub samples: [Vec2; N],
 }
 
 impl Rasterizer<1> {
-    #[allow(unused)]
     pub const NON_MSAA: Self = Self {
-        samples: [Vec2f::ZERO],
+        samples: [Vec2::ZERO],
     };
 }
 
 impl Rasterizer<4> {
-    #[allow(unused)]
     pub const MSAA_4X: Self = Self {
         samples: [
-            Vec2f::new(-0.125, -0.375),
-            Vec2f::new(0.375, -0.125),
-            Vec2f::new(-0.375, 0.125),
-            Vec2f::new(0.125, 0.375),
+            Vec2::new(-0.125, -0.375),
+            Vec2::new(0.375, -0.125),
+            Vec2::new(-0.375, 0.125),
+            Vec2::new(0.125, 0.375),
         ],
     };
 }
 
 impl<const N: usize> Rasterizer<N> {
-    #[allow(unused)]
-    pub const fn new(samples: [Vec2f; N]) -> Self {
+    pub const fn new(samples: [Vec2; N]) -> Self {
         Self { samples }
     }
 
-    fn viewport_matrix(w: f32, h: f32) -> Mat4f {
-        transform::translate(Vec3f::new(w / 2.0, h / 2.0, 0.0))
-            * transform::scale(Vec3f::new(w / 2.0, -h / 2.0, 1.0))
+    fn viewport_matrix(w: f32, h: f32) -> Mat4 {
+        Mat4::from_translation(Vec3A::new(w / 2.0, h / 2.0, 0.0).into())
+            * Mat4::from_scale(Vec3A::new(w / 2.0, -h / 2.0, 1.0).into())
     }
 
     fn rasterize(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
-        vp: Mat4f,
-        a: Vec4f,
-        b: Vec4f,
-        c: Vec4f,
-        normal: Vec3f,
-        world_a: Vec3f,
-        world_b: Vec3f,
-        world_c: Vec3f,
+        vp: Mat4,
+        a: Vec4,
+        b: Vec4,
+        c: Vec4,
+        normal: Vec3A,
+        world_a: Vec3A,
+        world_b: Vec3A,
+        world_c: Vec3A,
         shader: &impl Shader,
     ) {
-        let sa = (vp * a).perspective_divide().unwrap();
-        let sb = (vp * b).perspective_divide().unwrap();
-        let sc = (vp * c).perspective_divide().unwrap();
+        let sa = perspective_divide(vp * a).unwrap();
+        let sb = perspective_divide(vp * b).unwrap();
+        let sc = perspective_divide(vp * c).unwrap();
 
         let setup = TriSetup::new(sa, sb, sc);
 
@@ -245,10 +252,10 @@ impl<const N: usize> Rasterizer<N> {
     pub fn draw_mesh(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
-        vertices: &[Vec4f],
-        world_positions: &[Vec3f],
+        vertices: &[Vec4],
+        world_positions: &[Vec3A],
         indices: &[[usize; 3]],
-        normals: &[Vec3f],
+        normals: &[Vec3A],
         shader: impl Shader,
     ) {
         let vp_matrix = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
@@ -260,10 +267,10 @@ impl<const N: usize> Rasterizer<N> {
                 world_positions[i1],
                 world_positions[i2],
             );
-            // Back-face culling: view direction from vertex toward camera (origin).
-            // Front-facing when outward normal faces toward the camera.
+
+            // Back-face culling: outward normal must face toward camera (origin).
             let view_dir = -world_a;
-            if normal.dot(&view_dir) <= 0.0 {
+            if normal.dot(view_dir) <= 0.0 {
                 continue;
             }
 

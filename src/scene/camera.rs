@@ -1,41 +1,40 @@
-use crate::linalg::{Mat4f, Quaternion, Rotator, Vec3f, transform};
 use crate::scene::Projection;
-use num_traits::{ConstZero, Zero};
+use glam::{Mat4, Quat, Vec3A, Vec4};
 
 pub struct Camera {
-    position: Vec3f,
-    rotator: Rotator<f32>,
+    position: Vec3A,
+    rotation: Quat,
     proj: Projection,
 
-    vp_cache: Option<Mat4f>,
+    vp_cache: Option<Mat4>,
 }
 
 impl Camera {
-    pub fn new(position: Vec3f, rotator: Rotator<f32>, proj: Projection) -> Self {
+    pub fn new(position: Vec3A, rotation: Quat, proj: Projection) -> Self {
         Self {
             position,
-            rotator,
+            rotation,
             proj,
             vp_cache: None,
         }
     }
 
-    pub fn position(&self) -> Vec3f {
+    pub fn position(&self) -> Vec3A {
         self.position
     }
-    pub fn rotator(&self) -> Rotator<f32> {
-        self.rotator
+    pub fn rotation(&self) -> Quat {
+        self.rotation
     }
     pub fn projection(&self) -> &Projection {
         &self.proj
     }
 
-    pub fn set_position(&mut self, position: Vec3f) {
+    pub fn set_position(&mut self, position: Vec3A) {
         self.position = position;
         self.vp_cache = None;
     }
-    pub fn set_rotator(&mut self, rotator: Rotator<f32>) {
-        self.rotator = rotator;
+    pub fn set_rotation(&mut self, rotation: Quat) {
+        self.rotation = rotation;
         self.vp_cache = None;
     }
     pub fn set_projection(&mut self, projection: Projection) {
@@ -43,12 +42,12 @@ impl Camera {
         self.vp_cache = None;
     }
 
-    pub fn with_position(mut self, position: Vec3f) -> Self {
+    pub fn with_position(mut self, position: Vec3A) -> Self {
         self.set_position(position);
         self
     }
-    pub fn with_rotation(mut self, rotator: impl Fn(Rotator<f32>) -> Rotator<f32>) -> Self {
-        self.set_rotator(rotator(self.rotator));
+    pub fn with_rotation(mut self, rotation: Quat) -> Self {
+        self.set_rotation(rotation);
         self
     }
     pub fn with_projection(mut self, projection: Projection) -> Self {
@@ -56,25 +55,24 @@ impl Camera {
         self
     }
 
-    fn view_matrix(&self) -> Mat4f {
-        let rotation: Quaternion<f32> = self.rotator.into();
-        let forward = rotation.rotate_vector(Vec3f::unit_z());
-        let up = rotation.rotate_vector(Vec3f::unit_y());
-        let right = up.cross(&forward).normalize();
-        let corrected_up = forward.cross(&right);
+    fn view_matrix(&self) -> Mat4 {
+        let fwd: Vec3A = self.rotation * Vec3A::Z;
+        let up: Vec3A = self.rotation * Vec3A::Y;
+        let right = up.cross(fwd).normalize();
+        let corrected_up = fwd.cross(right);
 
-        let r = Mat4f::from([
-            [right.x(), corrected_up.x(), forward.x(), 0.0],
-            [right.y(), corrected_up.y(), forward.y(), 0.0],
-            [right.z(), corrected_up.z(), forward.z(), 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ]);
+        let r = Mat4::from_cols(
+            Vec4::new(right.x, right.y, right.z, 0.0),
+            Vec4::new(corrected_up.x, corrected_up.y, corrected_up.z, 0.0),
+            Vec4::new(fwd.x, fwd.y, fwd.z, 0.0),
+            Vec4::W,
+        );
 
-        let t = transform::translate(-self.position);
-        r.inverse().unwrap() * t
+        let t = Mat4::from_translation((-self.position).into());
+        r.inverse() * t
     }
 
-    pub fn vp_matrix(&mut self, aspect: f32) -> Mat4f {
+    pub fn vp_matrix(&mut self, aspect: f32) -> Mat4 {
         let vp = self.proj.projection_matrix(aspect) * self.view_matrix();
         self.vp_cache = Some(vp);
         vp
@@ -83,6 +81,6 @@ impl Camera {
 
 impl Default for Camera {
     fn default() -> Self {
-        Self::new(Vec3f::ZERO, Rotator::identity(), Projection::default())
+        Self::new(Vec3A::ZERO, Quat::IDENTITY, Projection::default())
     }
 }

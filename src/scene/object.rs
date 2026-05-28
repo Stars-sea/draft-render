@@ -1,5 +1,4 @@
 use crate::color::Color;
-use crate::linalg::Vec3f;
 use crate::scene::{Mesh, Transform};
 
 use std::sync::Arc;

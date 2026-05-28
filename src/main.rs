@@ -1,16 +1,17 @@
 mod color;
-mod linalg;
 mod pipeline;
 mod render_thread;
 mod scene;
 
 use crate::color::Color;
-use crate::linalg::{Quaternion, Vec3f};
 use crate::pipeline::Rasterizer;
 use crate::render_thread::{RenderJob, RenderResult};
-use crate::scene::{Camera, DirectionalLight, MeshBuilder, PointLight, Scene, SceneObject, Transform};
+use crate::scene::{
+    Camera, DirectionalLight, MeshBuilder, PointLight, Scene, SceneObject, Transform,
+};
 
 use anyhow::Result;
+use glam::{Quat, Vec3A};
 use minifb::{Key, Window, WindowOptions};
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -34,10 +35,10 @@ fn main() -> Result<()> {
     let start = Instant::now();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let angle = start.elapsed().as_secs_f32() * 1.2;
+        let angle = start.elapsed().as_secs_f32() * 0.8;
         scene.objects[0]
             .transform
-            .set_rotation(Quaternion::from_axis_angle(Vec3f::unit_y(), angle));
+            .set_rotation(Quat::from_axis_angle(Vec3A::Y.into(), angle));
 
         let job = scene.build_render_job(width, height);
         if job_tx.send(job).is_err() {
@@ -55,15 +56,15 @@ fn main() -> Result<()> {
 
 fn directional_light() -> Arc<DirectionalLight> {
     Arc::new(DirectionalLight::new(
-        Vec3f::new(0.0, -1.0, -1.0),
+        Vec3A::new(0.0, -1.0, -1.0),
         Color::WHITE,
-        1.0
+        1.0,
     ))
 }
 
 fn point_light() -> Arc<PointLight> {
     Arc::new(PointLight::new(
-        Vec3f::new(2.0, 2.0, 3.5),
+        Vec3A::new(2.0, 2.0, 3.5),
         Color::WHITE,
         8.0,
     ))
@@ -71,30 +72,29 @@ fn point_light() -> Arc<PointLight> {
 
 fn cube() -> SceneObject {
     const S: f32 = 0.5;
-    // 8 vertices centered at origin: front (z+) then back (z-)
     let builder = MeshBuilder::new()
-        .vertex(Vec3f::new(-S, -S, S))
-        .vertex(Vec3f::new(S, -S, S))
-        .vertex(Vec3f::new(S, S, S))
-        .vertex(Vec3f::new(-S, S, S))
-        .vertex(Vec3f::new(-S, -S, -S))
-        .vertex(Vec3f::new(S, -S, -S))
-        .vertex(Vec3f::new(S, S, -S))
-        .vertex(Vec3f::new(-S, S, -S))
+        .vertex(Vec3A::new(-S, -S, S))
+        .vertex(Vec3A::new(S, -S, S))
+        .vertex(Vec3A::new(S, S, S))
+        .vertex(Vec3A::new(-S, S, S))
+        .vertex(Vec3A::new(-S, -S, -S))
+        .vertex(Vec3A::new(S, -S, -S))
+        .vertex(Vec3A::new(S, S, -S))
+        .vertex(Vec3A::new(-S, S, -S))
         .triangle(0, 1, 2)
-        .triangle(0, 2, 3) // front
+        .triangle(0, 2, 3)
         .triangle(5, 4, 7)
-        .triangle(5, 7, 6) // back
+        .triangle(5, 7, 6)
         .triangle(1, 5, 6)
-        .triangle(1, 6, 2) // right
+        .triangle(1, 6, 2)
         .triangle(4, 0, 3)
-        .triangle(4, 3, 7) // left
+        .triangle(4, 3, 7)
         .triangle(3, 2, 6)
-        .triangle(3, 6, 7) // top
+        .triangle(3, 6, 7)
         .triangle(4, 5, 1)
-        .triangle(4, 1, 0); // bottom
+        .triangle(4, 1, 0);
 
-    let transform = Transform::default().with_translation(Vec3f::new(0.0, 0.0, 3.0));
+    let transform = Transform::default().with_translation(Vec3A::new(0.0, 0.0, 3.0));
     SceneObject::new(
         Arc::new(builder.build()),
         transform,

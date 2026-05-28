@@ -1,12 +1,10 @@
 use crate::color::Color;
-use crate::linalg::{Vec2f, Vec3f};
 use crate::scene::Light;
-
-use num_traits::Signed;
+use glam::{Vec2, Vec3A};
 use std::sync::Arc;
 
 pub trait Shader {
-    fn shade(&self, uv: Vec2f, z: f32, normal: Vec3f, world_pos: Vec3f) -> Color;
+    fn shade(&self, uv: Vec2, z: f32, normal: Vec3A, world_pos: Vec3A) -> Color;
 }
 
 pub struct BlinnPhongShader {
@@ -30,19 +28,19 @@ impl BlinnPhongShader {
 }
 
 impl Shader for BlinnPhongShader {
-    fn shade(&self, _uv: Vec2f, _z: f32, normal: Vec3f, world_pos: Vec3f) -> Color {
+    fn shade(&self, _uv: Vec2, _z: f32, normal: Vec3A, world_pos: Vec3A) -> Color {
         let mut diff_light = Color::BLACK;
         let mut spec_light = Color::BLACK;
 
         for light in &self.lights {
             let l = light.direction(world_pos);
-            let n_dot_l = normal.dot(&l).max(0.0);
-            if n_dot_l.is_negative() {
+            let n_dot_l = normal.dot(l).max(0.0);
+            if n_dot_l <= 0.0 {
                 continue;
             }
 
-            let h = (l - Vec3f::unit_z()).normalize();
-            let n_dot_h = normal.dot(&h).max(0.0);
+            let h = (l - Vec3A::Z).normalize();
+            let n_dot_h = normal.dot(h).max(0.0);
             if n_dot_h <= 0.0 {
                 continue;
             }

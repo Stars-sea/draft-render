@@ -1,8 +1,7 @@
-use crate::linalg::{Mat4f, Vec3f, Vec4f};
 use crate::render_thread::{RenderJob, RenderObject};
-use crate::scene::Mesh;
 use crate::scene::object::SceneObject;
-use crate::scene::{Camera, Light};
+use crate::scene::{Camera, Light, Mesh};
+use glam::{Mat4, Vec3A};
 use std::sync::Arc;
 
 pub struct Scene {
@@ -32,17 +31,17 @@ impl Scene {
         let aspect = width as f32 / height as f32;
         let vp = self.camera.vp_matrix(aspect);
 
-        let objects = self
+        let objects: Vec<RenderObject> = self
             .objects
             .iter_mut()
             .map(|obj| {
                 let model = obj.transform.transform_matrix();
                 let mvp = vp * model;
-                let world_positions: Vec<Vec3f> = obj
+                let world_positions: Vec<Vec3A> = obj
                     .mesh
                     .vertices
                     .iter()
-                    .map(|v| (model * Vec4f::from_vec3(*v, 1.0)).xyz())
+                    .map(|v| model.transform_point3a(*v))
                     .collect();
                 RenderObject {
                     mesh: Arc::clone(&obj.mesh),
@@ -63,22 +62,15 @@ impl Scene {
     }
 }
 
-/// 从 mesh 顶点计算对象空间面法线，再用模型矩阵的上 3x3 变换到世界空间。
-fn compute_face_normals(mesh: &Mesh, model: &Mat4f) -> Vec<Vec3f> {
+fn compute_face_normals(mesh: &Mesh, model: &Mat4) -> Vec<Vec3A> {
     mesh.indices
         .iter()
         .map(|&[i0, i1, i2]| {
             let v0 = mesh.vertices[i0];
             let v1 = mesh.vertices[i1];
             let v2 = mesh.vertices[i2];
-            let n = (v1 - v0).cross(&(v2 - v0)).normalize();
-
-            Vec3f::new(
-                model.row(0).xyz() * n,
-                model.row(1).xyz() * n,
-                model.row(2).xyz() * n,
-            )
-            .normalize()
+            let n = (v1 - v0).cross(v2 - v0).normalize();
+            model.transform_vector3a(n).normalize()
         })
         .collect()
 }
