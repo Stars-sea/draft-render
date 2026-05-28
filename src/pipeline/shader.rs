@@ -34,13 +34,13 @@ impl Shader for BlinnPhongShader {
 
         for light in &self.lights {
             let l = light.direction(world_pos);
-            let n_dot_l = normal.dot(l).max(0.0);
+            let n_dot_l = normal.dot(l);
             if n_dot_l <= 0.0 {
                 continue;
             }
 
             let h = (l - Vec3A::Z).normalize();
-            let n_dot_h = normal.dot(h).max(0.0);
+            let n_dot_h = normal.dot(h);
             if n_dot_h <= 0.0 {
                 continue;
             }

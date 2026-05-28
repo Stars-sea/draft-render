@@ -1,7 +1,7 @@
 use crate::render_thread::{RenderJob, RenderObject};
 use crate::scene::object::SceneObject;
 use crate::scene::{Camera, Light, Mesh};
-use glam::{Mat4, Vec3A};
+use glam::{Mat3A, Mat4, Vec3A};
 use std::sync::Arc;
 
 pub struct Scene {
@@ -47,7 +47,7 @@ impl Scene {
                     mesh: Arc::clone(&obj.mesh),
                     mvp,
                     color: obj.color,
-                    face_normals: compute_face_normals(&obj.mesh, &model),
+                    face_normals: compute_face_normals(&obj.mesh, model),
                     world_positions,
                 }
             })
@@ -62,15 +62,16 @@ impl Scene {
     }
 }
 
-fn compute_face_normals(mesh: &Mesh, model: &Mat4) -> Vec<Vec3A> {
+fn compute_face_normals(mesh: &Mesh, model: Mat4) -> Vec<Vec3A> {
+    let normal_matrix = Mat3A::from_mat4(model).inverse().transpose();
     mesh.indices
         .iter()
         .map(|&[i0, i1, i2]| {
             let v0 = mesh.vertices[i0];
             let v1 = mesh.vertices[i1];
             let v2 = mesh.vertices[i2];
-            let n = (v1 - v0).cross(v2 - v0).normalize();
-            model.transform_vector3a(n).normalize()
+            let n = (v1 - v0).cross(v2 - v0);
+            (normal_matrix * n).normalize()
         })
         .collect()
 }

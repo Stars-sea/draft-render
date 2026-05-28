@@ -3,10 +3,9 @@ use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
 use crate::pipeline::shader::Shader;
 
-use glam::{Mat4, Vec2, Vec3A, Vec4, Vec4Swizzles};
+use glam::{Mat4, Vec2, Vec3A, Vec3Swizzles, Vec4, Vec4Swizzles};
 use std::cmp::min;
 use std::ops::RangeInclusive;
-
 // ═══════════════════════════════════════════════════════════════════════════
 // triangle setup
 // ═══════════════════════════════════════════════════════════════════════════
@@ -53,6 +52,11 @@ impl Bounds {
     fn range_x(&self, max: usize) -> RangeInclusive<usize> {
         self.min_x..=min(self.max_x, max)
     }
+
+    fn min_center(&self) -> Vec2 {
+        const OFFSET: Vec2 = Vec2::new(0.5, 0.5);
+        Vec2::new(self.min_x as f32, self.min_y as f32) + OFFSET
+    }
 }
 
 impl TopLeft {
@@ -96,24 +100,21 @@ impl TriSetup {
     fn new(sa: Vec3A, sb: Vec3A, sc: Vec3A) -> Self {
         let bounds = Bounds::new(sa, sb, sc);
         let top_left = TopLeft::new(sa, sb, sc);
-        let (ea, eb) = (sa - sc, sb - sc);
-        let inv = 1.0 / (ea.x * eb.y - ea.y * eb.x);
-        let dux = eb.y * inv;
-        let duy = -eb.x * inv;
-        let dvx = -ea.y * inv;
-        let dvy = ea.x * inv;
 
-        let px0 = bounds.min_x as f32 + 0.5 - sc.x;
-        let py0 = bounds.min_y as f32 + 0.5 - sc.y;
-        let u0 = (eb.y * px0 - eb.x * py0) * inv;
-        let v0 = (ea.x * py0 - ea.y * px0) * inv;
+        let (ea, eb) = (sa - sc, sb - sc);
+        let inv = 1.0 / ea.xy().perp_dot(eb.xy());
+        let u_grad = Vec2::new(eb.y, -eb.x) * inv;
+        let v_grad = Vec2::new(-ea.y, ea.x) * inv;
+
+        let p0 = bounds.min_center() - sc.xy();
+        let uv0 = Vec2::new(p0.perp_dot(eb.xy()), ea.xy().perp_dot(p0)) * inv;
 
         Self {
             bounds,
             top_left,
-            u_grad: Vec2::new(dux, duy),
-            v_grad: Vec2::new(dvx, dvy),
-            uv0: Vec2::new(u0, v0),
+            u_grad,
+            v_grad,
+            uv0,
             z_c: sc.z,
             dz_du: ea.z,
             dz_dv: eb.z,
