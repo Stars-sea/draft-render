@@ -1,95 +1,160 @@
-﻿#![allow(unused)]
+use glam::{U8Vec4, UVec4, Vec4};
+use std::ops::{Add, AddAssign, Mul, MulAssign};
 
-use bytemuck::{Pod, Zeroable};
-use std::ops::{Add, Mul};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
-#[repr(transparent)]
-pub struct Color(pub u32);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Color(U8Vec4);
 
 impl Color {
-    pub const TRANSPARENT: Color = Color(0);
-    pub const BLACK: Color = Color(0xFF000000);
-    pub const WHITE: Color = Color(0xFFFFFFFF);
-    pub const RED: Color = Color(0xFFFF0000);
-    pub const GREEN: Color = Color(0xFF00FF00);
-    pub const BLUE: Color = Color(0xFF0000FF);
+    pub const TRANSPARENT: Color = Color(U8Vec4::ZERO);
+    pub const BLACK: Color = Color(U8Vec4::new(0, 0, 0, 0xFF));
+    pub const WHITE: Color = Color(U8Vec4::new(0xFF, 0xFF, 0xFF, 0xFF));
+    pub const RED: Color = Color(U8Vec4::new(0xFF, 0, 0, 0xFF));
+    pub const GREEN: Color = Color(U8Vec4::new(0, 0xFF, 0, 0xFF));
+    pub const BLUE: Color = Color(U8Vec4::new(0, 0, 0xFF, 0xFF));
 
     pub fn argb(a: u8, r: u8, g: u8, b: u8) -> Color {
-        let hex = (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | (b as u32) << 0;
-        Color(hex)
+        Color(U8Vec4::new(r, g, b, a))
     }
 
     pub fn rgb(r: u8, g: u8, b: u8) -> Color {
         Color::argb(0xFF, r, g, b)
     }
 
-    pub fn hex(&self) -> u32 {
-        self.0
+    pub fn to_u32(self) -> u32 {
+        (self.0.w as u32) << 24 | (self.0.x as u32) << 16 | (self.0.y as u32) << 8 | self.0.z as u32
     }
 
     pub fn a(&self) -> u8 {
-        ((self.0 >> 24) & 0xFF) as u8
+        self.0.w
     }
-
     pub fn r(&self) -> u8 {
-        ((self.0 >> 16) & 0xFF) as u8
+        self.0.x
     }
-
     pub fn g(&self) -> u8 {
-        ((self.0 >> 8) & 0xFF) as u8
+        self.0.y
     }
-
     pub fn b(&self) -> u8 {
-        ((self.0 >> 0) & 0xFF) as u8
+        self.0.z
     }
 
-    /// Average color
     pub fn average(samples: &[Color]) -> Color {
         let n = samples.len() as u32;
-        let (mut r, mut g, mut b, mut a) = (0u32, 0u32, 0u32, 0u32);
-        for c in samples {
-            r += c.r() as u32;
-            g += c.g() as u32;
-            b += c.b() as u32;
-            a += c.a() as u32;
-        }
-        Color::argb((a / n) as u8, (r / n) as u8, (g / n) as u8, (b / n) as u8)
+        let sum = samples
+            .iter()
+            .map(|c| c.0.as_uvec4())
+            .reduce(|a, b| a + b)
+            .unwrap_or(UVec4::ZERO);
+        Color((sum / n).as_u8vec4())
+    }
+}
+
+// ---- Add ----
+
+impl Add<&Color> for &Color {
+    type Output = Color;
+
+    fn add(self, rhs: &Color) -> Color {
+        Color(self.0.saturating_add(rhs.0))
     }
 }
 
 impl Add<Color> for Color {
     type Output = Color;
-
     fn add(self, rhs: Color) -> Color {
-        Color::rgb(
-            self.r().saturating_add(rhs.r()),
-            self.g().saturating_add(rhs.g()),
-            self.b().saturating_add(rhs.b()),
-        )
+        &self + &rhs
+    }
+}
+
+impl Add<Color> for &Color {
+    type Output = Color;
+    fn add(self, rhs: Color) -> Color {
+        self + &rhs
+    }
+}
+
+impl Add<&Color> for Color {
+    type Output = Color;
+    fn add(self, rhs: &Color) -> Color {
+        &self + rhs
+    }
+}
+
+impl AddAssign<&Color> for Color {
+    fn add_assign(&mut self, rhs: &Color) {
+        *self = &*self + rhs;
+    }
+}
+
+impl AddAssign<Color> for Color {
+    fn add_assign(&mut self, rhs: Color) {
+        *self = &*self + &rhs;
+    }
+}
+
+// ---- Mul<f32> ----
+
+impl Mul<f32> for &Color {
+    type Output = Color;
+
+    fn mul(self, factor: f32) -> Color {
+        let v = (self.0.as_vec4() * factor).clamp(Vec4::ZERO, Vec4::splat(255.0));
+        Color(v.as_u8vec4())
     }
 }
 
 impl Mul<f32> for Color {
     type Output = Color;
+    fn mul(self, factor: f32) -> Color {
+        &self * factor
+    }
+}
 
-    fn mul(self, factor: f32) -> Self::Output {
-        Color::rgb(
-            (self.r() as f32 * factor).min(255.0) as u8,
-            (self.g() as f32 * factor).min(255.0) as u8,
-            (self.b() as f32 * factor).min(255.0) as u8,
-        )
+impl MulAssign<f32> for Color {
+    fn mul_assign(&mut self, factor: f32) {
+        *self = &*self * factor;
+    }
+}
+
+// ---- Mul<Color> (modulate) ----
+
+impl Mul<&Color> for &Color {
+    type Output = Color;
+
+    fn mul(self, rhs: &Color) -> Color {
+        let r = self.0.as_u16vec4() * rhs.0.as_u16vec4();
+        Color((r / 0xFF).as_u8vec4())
     }
 }
 
 impl Mul<Color> for Color {
     type Output = Color;
+    fn mul(self, rhs: Color) -> Color {
+        &self * &rhs
+    }
+}
 
-    fn mul(self, rhs: Color) -> Self::Output {
-        Color::rgb(
-            ((self.r() as u16 * rhs.r() as u16) / 255) as u8,
-            ((self.g() as u16 * rhs.g() as u16) / 255) as u8,
-            ((self.b() as u16 * rhs.b() as u16) / 255) as u8,
-        )
+impl Mul<Color> for &Color {
+    type Output = Color;
+    fn mul(self, rhs: Color) -> Color {
+        self * &rhs
+    }
+}
+
+impl Mul<&Color> for Color {
+    type Output = Color;
+    fn mul(self, rhs: &Color) -> Color {
+        &self * rhs
+    }
+}
+
+impl MulAssign<&Color> for Color {
+    fn mul_assign(&mut self, rhs: &Color) {
+        *self = &*self * rhs;
+    }
+}
+
+impl MulAssign<Color> for Color {
+    fn mul_assign(&mut self, rhs: Color) {
+        *self = &*self * &rhs;
     }
 }

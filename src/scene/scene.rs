@@ -27,13 +27,13 @@ impl Scene {
         self.objects.push(object);
     }
 
-    pub fn build_render_job(&mut self, width: usize, height: usize) -> RenderJob {
+    pub fn build_render_job(&self, width: usize, height: usize) -> RenderJob {
         let aspect = width as f32 / height as f32;
         let vp = self.camera.vp_matrix(aspect);
 
         let objects: Vec<RenderObject> = self
             .objects
-            .iter_mut()
+            .iter()
             .map(|obj| {
                 let model = obj.transform.transform_matrix();
                 let mvp = vp * model;
@@ -46,7 +46,7 @@ impl Scene {
                 RenderObject {
                     mesh: Arc::clone(&obj.mesh),
                     mvp,
-                    color: obj.color,
+                    material: obj.material.clone(),
                     face_normals: compute_face_normals(&obj.mesh, model),
                     world_positions,
                 }

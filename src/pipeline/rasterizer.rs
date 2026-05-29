@@ -2,10 +2,12 @@ use crate::color::Color;
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
 use crate::pipeline::shader::Shader;
+use crate::scene::Material;
 
 use glam::{Mat4, Vec2, Vec3A, Vec3Swizzles, Vec4, Vec4Swizzles};
 use std::cmp::min;
 use std::ops::RangeInclusive;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // triangle setup
 // ═══════════════════════════════════════════════════════════════════════════
@@ -28,16 +30,23 @@ struct TriSetup {
     top_left: TopLeft,
     u_grad: Vec2,
     v_grad: Vec2,
-    uv0: Vec2,
+    bc0: Vec2,
     z_c: f32,
     dz_du: f32,
     dz_dv: f32,
 }
 
 impl Bounds {
+    fn min_max(a: f32, b: f32, c: f32) -> (usize, usize) {
+        (
+            a.min(b).min(c).floor() as usize,
+            a.max(b).max(c).ceil() as usize,
+        )
+    }
+
     fn new(a: Vec3A, b: Vec3A, c: Vec3A) -> Self {
-        let (min_x, max_x) = min_max(a.x, b.x, c.x);
-        let (min_y, max_y) = min_max(a.y, b.y, c.y);
+        let (min_x, max_x) = Self::min_max(a.x, b.x, c.x);
+        let (min_y, max_y) = Self::min_max(a.y, b.y, c.y);
         Self {
             min_x,
             max_x,
@@ -60,40 +69,22 @@ impl Bounds {
 }
 
 impl TopLeft {
-    fn new(a: Vec3A, b: Vec3A, c: Vec3A) -> Self {
-        Self {
-            ca: is_top_left(c.x, c.y, a.x, a.y),
-            cb: is_top_left(c.x, c.y, b.x, b.y),
-            ab: is_top_left(a.x, a.y, b.x, b.y),
+    fn is_top_left(sx: f32, sy: f32, ex: f32, ey: f32) -> bool {
+        let dy = ey - sy;
+        if dy.abs() < f32::EPSILON {
+            sx > ex
+        } else {
+            dy < 0.0
         }
     }
-}
 
-fn min_max(a: f32, b: f32, c: f32) -> (usize, usize) {
-    (
-        a.min(b).min(c).floor() as usize,
-        a.max(b).max(c).ceil() as usize,
-    )
-}
-
-fn is_top_left(sx: f32, sy: f32, ex: f32, ey: f32) -> bool {
-    let dy = ey - sy;
-    if dy.abs() < f32::EPSILON {
-        sx > ex
-    } else {
-        dy < 0.0
+    fn new(a: Vec3A, b: Vec3A, c: Vec3A) -> Self {
+        Self {
+            ca: Self::is_top_left(c.x, c.y, a.x, a.y),
+            cb: Self::is_top_left(c.x, c.y, b.x, b.y),
+            ab: Self::is_top_left(a.x, a.y, b.x, b.y),
+        }
     }
-}
-
-fn perspective_divide(v: Vec4) -> Option<Vec3A> {
-    // w == 0 only when the vertex lies on the camera plane (z_view = 0).
-    // Near-plane clipping (n = 0.1) guarantees |w| ≥ 0.1 for every visible
-    // vertex, so exact comparison against 0.0 is sound — no rounding hazard.
-    if v.w == 0.0 {
-        return None;
-    }
-    let r = 1.0 / v.w;
-    Some((v.xyz() * r).into())
 }
 
 impl TriSetup {
@@ -107,14 +98,14 @@ impl TriSetup {
         let v_grad = Vec2::new(-ea.y, ea.x) * inv;
 
         let p0 = bounds.min_center() - sc.xy();
-        let uv0 = Vec2::new(p0.perp_dot(eb.xy()), ea.xy().perp_dot(p0)) * inv;
+        let bc0 = Vec2::new(p0.perp_dot(eb.xy()), ea.xy().perp_dot(p0)) * inv;
 
         Self {
             bounds,
             top_left,
             u_grad,
             v_grad,
-            uv0,
+            bc0,
             z_c: sc.z,
             dz_du: ea.z,
             dz_dv: eb.z,
@@ -125,8 +116,8 @@ impl TriSetup {
     fn row_start(&self, y: usize) -> (f32, f32) {
         let dy = (y - self.bounds.min_y) as f32;
         (
-            self.uv0.x + dy * self.u_grad.y,
-            self.uv0.y + dy * self.v_grad.y,
+            self.bc0.x + dy * self.u_grad.y,
+            self.bc0.y + dy * self.v_grad.y,
         )
     }
 
@@ -141,46 +132,69 @@ impl TriSetup {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// scanline
+// triangle
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn scan_triangle<const N: usize>(
-    buf: &mut RenderBuffer<Fragment<N>>,
-    setup: &TriSetup,
-    samples: &[Vec2; N],
+struct Triangle {
+    clip: [Vec4; 3],
+    world: [Vec3A; 3],
+    uv: [Vec2; 3],
     normal: Vec3A,
-    world_a: Vec3A,
-    world_b: Vec3A,
-    world_c: Vec3A,
-    shader: &impl Shader,
-) {
-    let w_du = world_a - world_c;
-    let w_dv = world_b - world_c;
-    for y in setup.bounds.range_y(buf.height() - 1) {
-        let (mut u, mut v) = setup.row_start(y);
-        for x in setup.bounds.range_x(buf.width() - 1) {
-            let frag = buf.get_mut(x, y);
-            let mut shaded = None;
-            for i in 0..N {
-                let us = u + setup.u_grad.dot(samples[i]);
-                let vs = v + setup.v_grad.dot(samples[i]);
-                if !setup.is_inside(us, vs) {
-                    continue;
-                }
-                let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
-                if z >= frag.depth_buf[i] {
-                    continue;
-                }
-                let color = *shaded.get_or_insert_with(|| {
-                    let wp = world_c + w_du * u + w_dv * v;
-                    shader.shade(Vec2::new(u, v), z, normal, wp)
-                });
-                frag.depth_buf[i] = z;
-                frag.color_buf[i] = color;
-            }
-            u = u + setup.u_grad.x;
-            v = v + setup.v_grad.x;
+}
+
+impl Triangle {
+    fn is_backface(&self) -> bool {
+        self.normal.dot(-self.world[0]) <= 0.0
+    }
+
+    fn perspective_divide(v: Vec4) -> Option<Vec3A> {
+        // w == 0 only when the vertex lies on the camera plane (z_view = 0).
+        // Near-plane clipping (n = 0.1) guarantees |w| ≥ 0.1 for every visible
+        // vertex, so exact comparison against 0.0 is sound — no rounding hazard.
+        if v.w == 0.0 {
+            return None;
         }
+        let r = 1.0 / v.w;
+        Some((v.xyz() * r).into())
+    }
+
+    fn setup(&self, vp: Mat4) -> TriSetup {
+        let sa = Self::perspective_divide(vp * self.clip[0]).unwrap();
+        let sb = Self::perspective_divide(vp * self.clip[1]).unwrap();
+        let sc = Self::perspective_divide(vp * self.clip[2]).unwrap();
+        TriSetup::new(sa, sb, sc)
+    }
+
+    fn interpolator(&self) -> TriInterp {
+        TriInterp {
+            w_c: self.world[2],
+            w_du: self.world[0] - self.world[2],
+            w_dv: self.world[1] - self.world[2],
+            uv_c: self.uv[2],
+            uv_du: self.uv[0] - self.uv[2],
+            uv_dv: self.uv[1] - self.uv[2],
+        }
+    }
+}
+
+struct TriInterp {
+    w_c: Vec3A,
+    w_du: Vec3A,
+    w_dv: Vec3A,
+    uv_c: Vec2,
+    uv_du: Vec2,
+    uv_dv: Vec2,
+}
+
+impl TriInterp {
+    #[inline]
+    fn world_pos(&self, u: f32, v: f32) -> Vec3A {
+        self.w_c + self.w_du * u + self.w_dv * v
+    }
+
+    #[inline]
+    fn tex_uv(&self, u: f32, v: f32) -> Vec2 {
+        self.uv_c + self.uv_du * u + self.uv_dv * v
     }
 }
 
@@ -193,6 +207,7 @@ pub struct Rasterizer<const N: usize> {
 }
 
 impl Rasterizer<1> {
+    #[allow(dead_code)]
     pub const NON_MSAA: Self = Self {
         samples: [Vec2::ZERO],
     };
@@ -210,6 +225,7 @@ impl Rasterizer<4> {
 }
 
 impl<const N: usize> Rasterizer<N> {
+    #[allow(dead_code)]
     pub const fn new(samples: [Vec2; N]) -> Self {
         Self { samples }
     }
@@ -219,35 +235,67 @@ impl<const N: usize> Rasterizer<N> {
             * Mat4::from_scale(Vec3A::new(w / 2.0, -h / 2.0, 1.0).into())
     }
 
+    fn shade_fragment(
+        &self,
+        frag: &mut Fragment<N>,
+        setup: &TriSetup,
+        normal: Vec3A,
+        interp: &TriInterp,
+        shader: &impl Shader,
+        material: &Material,
+        u: f32,
+        v: f32,
+    ) {
+        for i in 0..N {
+            let us = u + setup.u_grad.dot(self.samples[i]);
+            let vs = v + setup.v_grad.dot(self.samples[i]);
+            if !setup.is_inside(us, vs) {
+                continue;
+            }
+            let z = setup.z_c + us * setup.dz_du + vs * setup.dz_dv;
+            if z >= frag.depth_buf[i] {
+                continue;
+            }
+            let color = shader.shade(
+                material,
+                interp.tex_uv(us, vs),
+                z,
+                normal,
+                interp.world_pos(us, vs),
+            );
+            frag.depth_buf[i] = z;
+            frag.color_buf[i] = color;
+        }
+    }
+
     fn rasterize(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
         vp: Mat4,
-        a: Vec4,
-        b: Vec4,
-        c: Vec4,
-        normal: Vec3A,
-        world_a: Vec3A,
-        world_b: Vec3A,
-        world_c: Vec3A,
+        tri: &Triangle,
         shader: &impl Shader,
+        material: &Material,
     ) {
-        let sa = perspective_divide(vp * a).unwrap();
-        let sb = perspective_divide(vp * b).unwrap();
-        let sc = perspective_divide(vp * c).unwrap();
+        let setup = tri.setup(vp);
+        let interp = tri.interpolator();
 
-        let setup = TriSetup::new(sa, sb, sc);
-
-        scan_triangle(
-            buf,
-            &setup,
-            &self.samples,
-            normal,
-            world_a,
-            world_b,
-            world_c,
-            shader,
-        );
+        for y in setup.bounds.range_y(buf.height() - 1) {
+            let (mut u, mut v) = setup.row_start(y);
+            for x in setup.bounds.range_x(buf.width() - 1) {
+                self.shade_fragment(
+                    buf.get_mut(x, y),
+                    &setup,
+                    tri.normal,
+                    &interp,
+                    shader,
+                    material,
+                    u,
+                    v,
+                );
+                u += setup.u_grad.x;
+                v += setup.v_grad.x;
+            }
+        }
     }
 
     pub fn draw_mesh(
@@ -257,43 +305,36 @@ impl<const N: usize> Rasterizer<N> {
         world_positions: &[Vec3A],
         indices: &[[usize; 3]],
         normals: &[Vec3A],
-        shader: impl Shader,
+        shader: &impl Shader,
+        uvs: &Vec<Vec2>,
+        material: &Material,
     ) {
         let vp_matrix = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
 
-        for (t, &[i0, i1, i2]) in indices.iter().enumerate() {
-            let normal = normals[t];
-            let (world_a, world_b, world_c) = (
-                world_positions[i0],
-                world_positions[i1],
-                world_positions[i2],
-            );
+        for (t, indexes) in indices.iter().enumerate() {
+            let tri = Triangle {
+                clip: indexes.map(|i| vertices[i]),
+                world: indexes.map(|i| world_positions[i]),
+                uv: if uvs.is_empty() {
+                    [Vec2::ZERO; 3]
+                } else {
+                    indexes.map(|i| uvs[i])
+                },
+                normal: normals[t],
+            };
 
-            // Back-face culling: outward normal must face toward camera (origin).
-            let view_dir = -world_a;
-            if normal.dot(view_dir) <= 0.0 {
+            if tri.is_backface() {
                 continue;
             }
 
-            self.rasterize(
-                buf,
-                vp_matrix,
-                vertices[i0],
-                vertices[i1],
-                vertices[i2],
-                normal,
-                world_a,
-                world_b,
-                world_c,
-                &shader,
-            );
+            self.rasterize(buf, vp_matrix, &tri, shader, material);
         }
     }
 
-    pub fn resolve(&self, src: &RenderBuffer<Fragment<N>>, fb: &mut RenderBuffer<Color>) {
+    pub fn resolve(&self, src: &RenderBuffer<Fragment<N>>, fb: &mut RenderBuffer<u32>) {
         for y in 0..src.height() {
             for x in 0..src.width() {
-                fb[(x, y)] = Color::average(&src[(x, y)].color_buf);
+                fb[(x, y)] = Color::average(&src[(x, y)].color_buf).to_u32();
             }
         }
     }

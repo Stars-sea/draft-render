@@ -1,11 +1,8 @@
-use crate::color::Color;
 use crate::pipeline::{BlinnPhongShader, Fragment, Rasterizer, RenderBuffer};
-use crate::scene::{Light, Mesh};
-use glam::{Mat4, Vec3A, Vec4};
+use crate::scene::{Light, Material, Mesh};
 
-use bytemuck::cast_slice;
-use std::sync::Arc;
-use std::sync::mpsc;
+use glam::{Mat4, Vec3A, Vec4};
+use std::sync::{Arc, mpsc};
 
 pub struct RenderJob {
     pub lights: Vec<Arc<dyn Light + Send + Sync>>,
@@ -17,7 +14,7 @@ pub struct RenderJob {
 pub struct RenderObject {
     pub mesh: Arc<Mesh>,
     pub mvp: Mat4,
-    pub color: Color,
+    pub material: Material,
     pub face_normals: Vec<Vec3A>,
     pub world_positions: Vec<Vec3A>,
 }
@@ -33,35 +30,38 @@ pub fn render_loop<const N: usize>(
 ) {
     let mut width = 0;
     let mut height = 0;
-    let mut frame_buffer = RenderBuffer::new(1, 1, Color::BLACK);
+    let mut frame_buffer = RenderBuffer::new(1, 1, 0u32);
     let mut frag_buf = RenderBuffer::new(1, 1, Fragment::<N>::new());
 
     while let Ok(job) = job_rx.recv() {
         if job.width != width || job.height != height {
             width = job.width;
             height = job.height;
-            frame_buffer = RenderBuffer::new(width, height, Color::BLACK);
+            frame_buffer = RenderBuffer::new(width, height, 0u32);
             frag_buf = RenderBuffer::new(width, height, Fragment::<N>::new());
         }
 
         frag_buf.clear(Fragment::new());
 
+        let shader = BlinnPhongShader::new(job.lights.clone());
+
         for obj in &job.objects {
             let vertices = transform_vertices(&obj.mesh, &obj.mvp);
-            let shader = BlinnPhongShader::new(obj.color, job.lights.clone());
             rasterizer.draw_mesh(
                 &mut frag_buf,
                 &vertices,
                 &obj.world_positions,
                 &obj.mesh.indices,
                 &obj.face_normals,
-                shader,
+                &shader,
+                &obj.mesh.uvs,
+                &obj.material,
             );
         }
 
         rasterizer.resolve(&frag_buf, &mut frame_buffer);
 
-        let data = cast_slice(frame_buffer.as_slice()).to_vec();
+        let data = frame_buffer.as_slice().to_vec();
         if result_tx.send(RenderResult::FrameReady(data)).is_err() {
             break;
         }
@@ -69,8 +69,5 @@ pub fn render_loop<const N: usize>(
 }
 
 fn transform_vertices(mesh: &Mesh, mvp: &Mat4) -> Vec<Vec4> {
-    mesh.vertices
-        .iter()
-        .map(|v| *mvp * v.extend(1.0))
-        .collect()
+    mesh.vertices.iter().map(|v| *mvp * v.extend(1.0)).collect()
 }

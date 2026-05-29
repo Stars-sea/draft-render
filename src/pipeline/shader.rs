@@ -1,34 +1,42 @@
 use crate::color::Color;
-use crate::scene::Light;
+use crate::scene::{Light, Material};
 use glam::{Vec2, Vec3A};
 use std::sync::Arc;
 
 pub trait Shader {
-    fn shade(&self, uv: Vec2, z: f32, normal: Vec3A, world_pos: Vec3A) -> Color;
+    fn shade(
+        &self,
+        material: &Material,
+        tex_uv: Vec2,
+        z: f32,
+        normal: Vec3A,
+        world_pos: Vec3A,
+    ) -> Color;
 }
 
 pub struct BlinnPhongShader {
-    pub color: Color,
-    pub ambient: Color,
-    pub specular: Color,
-    pub shininess: f32,
     pub lights: Vec<Arc<dyn Light + Send + Sync>>,
 }
 
 impl BlinnPhongShader {
-    pub fn new(color: Color, lights: Vec<Arc<dyn Light + Send + Sync>>) -> Self {
-        Self {
-            color,
-            ambient: color * 0.1,
-            specular: Color::WHITE,
-            shininess: 32.0,
-            lights,
-        }
+    pub fn new(lights: Vec<Arc<dyn Light + Send + Sync>>) -> Self {
+        Self { lights }
     }
 }
 
 impl Shader for BlinnPhongShader {
-    fn shade(&self, _uv: Vec2, _z: f32, normal: Vec3A, world_pos: Vec3A) -> Color {
+    fn shade(
+        &self,
+        material: &Material,
+        tex_uv: Vec2,
+        _z: f32,
+        normal: Vec3A,
+        world_pos: Vec3A,
+    ) -> Color {
+        let diffuse = material.diffuse(tex_uv);
+        let specular = material.specular();
+        let shininess = material.shininess();
+
         let mut diff_light = Color::BLACK;
         let mut spec_light = Color::BLACK;
 
@@ -39,17 +47,18 @@ impl Shader for BlinnPhongShader {
                 continue;
             }
 
-            let h = (l - Vec3A::Z).normalize();
+            let v = -world_pos.normalize();
+            let h = (l + v).normalize();
             let n_dot_h = normal.dot(h);
             if n_dot_h <= 0.0 {
                 continue;
             }
             let i = light.intensity();
             let attn = light.attenuation(world_pos);
-            diff_light = diff_light + light.color() * (i * attn * n_dot_l);
-            spec_light = spec_light + light.color() * (i * attn * n_dot_h.powf(self.shininess));
+            diff_light += light.color() * (i * attn * n_dot_l);
+            spec_light += light.color() * (i * attn * n_dot_h.powf(shininess));
         }
 
-        self.ambient + self.color * diff_light + self.specular * spec_light
+        diffuse * 0.1 + diffuse * diff_light + specular * spec_light
     }
 }
