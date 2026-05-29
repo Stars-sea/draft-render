@@ -4,11 +4,14 @@ pub struct Mesh {
     pub vertices: Vec<Vec3A>,
     pub indices: Vec<[usize; 3]>,
     pub uvs: Vec<Vec2>,
+    /// Per-vertex normals. Empty means flat shading will be auto-computed.
+    pub normals: Vec<Vec3A>,
 }
 
 pub struct MeshBuilder {
     vertices: Vec<Vec3A>,
     uvs: Vec<Vec2>,
+    normals: Vec<Vec3A>,
     indices: Vec<[usize; 3]>,
 }
 
@@ -17,6 +20,7 @@ impl MeshBuilder {
         Self {
             vertices: Vec::new(),
             uvs: Vec::new(),
+            normals: Vec::new(),
             indices: Vec::new(),
         }
     }
@@ -28,6 +32,12 @@ impl MeshBuilder {
 
     pub fn uv(mut self, u: f32, v: f32) -> Self {
         self.uvs.push(Vec2::new(u, v));
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn normal(mut self, x: f32, y: f32, z: f32) -> Self {
+        self.normals.push(Vec3A::new(x, y, z));
         self
     }
 
@@ -43,10 +53,17 @@ impl MeshBuilder {
             self.uvs.len(),
             self.vertices.len()
         );
+        debug_assert!(
+            self.normals.is_empty() || self.normals.len() == self.vertices.len(),
+            "normal count ({}) must match vertex count ({}) or be zero",
+            self.normals.len(),
+            self.vertices.len()
+        );
         Mesh {
             vertices: self.vertices,
             indices: self.indices,
             uvs: self.uvs,
+            normals: self.normals,
         }
     }
 }

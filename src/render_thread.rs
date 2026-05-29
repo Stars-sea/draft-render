@@ -1,7 +1,7 @@
 use crate::pipeline::{BlinnPhongShader, Fragment, Rasterizer, RenderBuffer};
-use crate::scene::{Light, Material, Mesh};
+use crate::scene::{Light, Material};
 
-use glam::{Mat4, Vec3A, Vec4};
+use glam::{Vec3A, Vec4};
 use std::sync::{Arc, mpsc};
 
 pub struct RenderJob {
@@ -12,11 +12,12 @@ pub struct RenderJob {
 }
 
 pub struct RenderObject {
-    pub mesh: Arc<Mesh>,
-    pub mvp: Mat4,
-    pub material: Material,
-    pub face_normals: Vec<Vec3A>,
+    pub indices: Vec<[usize; 3]>,
+    pub clip_vertices: Vec<Vec4>,
     pub world_positions: Vec<Vec3A>,
+    pub vertex_normals: Vec<Vec3A>,
+    pub uvs: Vec<glam::Vec2>,
+    pub material: Material,
 }
 
 pub enum RenderResult {
@@ -46,15 +47,14 @@ pub fn render_loop<const N: usize>(
         let shader = BlinnPhongShader::new(job.lights.clone());
 
         for obj in &job.objects {
-            let vertices = transform_vertices(&obj.mesh, &obj.mvp);
             rasterizer.draw_mesh(
                 &mut frag_buf,
-                &vertices,
+                &obj.clip_vertices,
                 &obj.world_positions,
-                &obj.mesh.indices,
-                &obj.face_normals,
+                &obj.vertex_normals,
+                &obj.uvs,
+                &obj.indices,
                 &shader,
-                &obj.mesh.uvs,
                 &obj.material,
             );
         }
@@ -66,8 +66,4 @@ pub fn render_loop<const N: usize>(
             break;
         }
     }
-}
-
-fn transform_vertices(mesh: &Mesh, mvp: &Mat4) -> Vec<Vec4> {
-    mesh.vertices.iter().map(|v| *mvp * v.extend(1.0)).collect()
 }

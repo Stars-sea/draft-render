@@ -139,12 +139,35 @@ struct Triangle {
     clip: [Vec4; 3],
     world: [Vec3A; 3],
     uv: [Vec2; 3],
-    normal: Vec3A,
+    normals: [Vec3A; 3],
 }
 
 impl Triangle {
+    fn from_slices(
+        vertices: &[Vec4],
+        world_positions: &[Vec3A],
+        vertex_normals: &[Vec3A],
+        uvs: &[Vec2],
+        indexes: &[usize; 3],
+    ) -> Self {
+        let clip = indexes.map(|i| vertices[i]);
+        let world = indexes.map(|i| world_positions[i]);
+        let uv = if uvs.is_empty() {
+            [Vec2::ZERO; 3]
+        } else {
+            indexes.map(|i| uvs[i])
+        };
+        let normals = if vertex_normals.len() == world_positions.len() {
+            indexes.map(|i| vertex_normals[i])
+        } else {
+            let fnorm = (world[1] - world[0]).cross(world[2] - world[0]).normalize();
+            [fnorm; 3]
+        };
+        Self { clip, world, uv, normals }
+    }
+
     fn is_backface(&self) -> bool {
-        self.normal.dot(-self.world[0]) <= 0.0
+        self.normals[0].dot(-self.world[0]) <= 0.0
     }
 
     fn perspective_divide(v: Vec4) -> Option<Vec3A> {
@@ -173,6 +196,9 @@ impl Triangle {
             uv_c: self.uv[2],
             uv_du: self.uv[0] - self.uv[2],
             uv_dv: self.uv[1] - self.uv[2],
+            n_c: self.normals[2],
+            n_du: self.normals[0] - self.normals[2],
+            n_dv: self.normals[1] - self.normals[2],
         }
     }
 }
@@ -184,6 +210,9 @@ struct TriInterp {
     uv_c: Vec2,
     uv_du: Vec2,
     uv_dv: Vec2,
+    n_c: Vec3A,
+    n_du: Vec3A,
+    n_dv: Vec3A,
 }
 
 impl TriInterp {
@@ -195,6 +224,11 @@ impl TriInterp {
     #[inline]
     fn tex_uv(&self, u: f32, v: f32) -> Vec2 {
         self.uv_c + self.uv_du * u + self.uv_dv * v
+    }
+
+    #[inline]
+    fn normal(&self, u: f32, v: f32) -> Vec3A {
+        (self.n_c + self.n_du * u + self.n_dv * v).normalize()
     }
 }
 
@@ -239,7 +273,6 @@ impl<const N: usize> Rasterizer<N> {
         &self,
         frag: &mut Fragment<N>,
         setup: &TriSetup,
-        normal: Vec3A,
         interp: &TriInterp,
         shader: &impl Shader,
         material: &Material,
@@ -256,6 +289,7 @@ impl<const N: usize> Rasterizer<N> {
             if z >= frag.depth_buf[i] {
                 continue;
             }
+            let normal = interp.normal(us, vs);
             let color = shader.shade(
                 material,
                 interp.tex_uv(us, vs),
@@ -285,7 +319,6 @@ impl<const N: usize> Rasterizer<N> {
                 self.shade_fragment(
                     buf.get_mut(x, y),
                     &setup,
-                    tri.normal,
                     &interp,
                     shader,
                     material,
@@ -303,31 +336,20 @@ impl<const N: usize> Rasterizer<N> {
         buf: &mut RenderBuffer<Fragment<N>>,
         vertices: &[Vec4],
         world_positions: &[Vec3A],
+        vertex_normals: &[Vec3A],
+        uvs: &[Vec2],
         indices: &[[usize; 3]],
-        normals: &[Vec3A],
         shader: &impl Shader,
-        uvs: &Vec<Vec2>,
         material: &Material,
     ) {
-        let vp_matrix = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
+        let vp = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
 
-        for (t, indexes) in indices.iter().enumerate() {
-            let tri = Triangle {
-                clip: indexes.map(|i| vertices[i]),
-                world: indexes.map(|i| world_positions[i]),
-                uv: if uvs.is_empty() {
-                    [Vec2::ZERO; 3]
-                } else {
-                    indexes.map(|i| uvs[i])
-                },
-                normal: normals[t],
-            };
-
+        for indexes in indices {
+            let tri = Triangle::from_slices(vertices, world_positions, vertex_normals, uvs, indexes);
             if tri.is_backface() {
                 continue;
             }
-
-            self.rasterize(buf, vp_matrix, &tri, shader, material);
+            self.rasterize(buf, vp, &tri, shader, material);
         }
     }
 

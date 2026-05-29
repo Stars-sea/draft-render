@@ -1,7 +1,7 @@
 use crate::render_thread::{RenderJob, RenderObject};
 use crate::scene::object::SceneObject;
-use crate::scene::{Camera, Light, Mesh};
-use glam::{Mat3A, Mat4, Vec3A};
+use crate::scene::{Camera, Light};
+use glam::{Mat3A, Vec3A};
 use std::sync::Arc;
 
 pub struct Scene {
@@ -37,18 +37,32 @@ impl Scene {
             .map(|obj| {
                 let model = obj.transform.transform_matrix();
                 let mvp = vp * model;
+                let clip_vertices: Vec<_> = obj
+                    .mesh
+                    .vertices
+                    .iter()
+                    .map(|v| mvp * v.extend(1.0))
+                    .collect();
                 let world_positions: Vec<Vec3A> = obj
                     .mesh
                     .vertices
                     .iter()
                     .map(|v| model.transform_point3a(*v))
                     .collect();
+                let normal_matrix = Mat3A::from_mat4(model).inverse().transpose();
+                let vertex_normals: Vec<Vec3A> = obj
+                    .mesh
+                    .normals
+                    .iter()
+                    .map(|n| (normal_matrix * *n).normalize())
+                    .collect();
                 RenderObject {
-                    mesh: Arc::clone(&obj.mesh),
-                    mvp,
-                    material: obj.material.clone(),
-                    face_normals: compute_face_normals(&obj.mesh, model),
+                    indices: obj.mesh.indices.clone(),
+                    clip_vertices,
                     world_positions,
+                    vertex_normals,
+                    uvs: obj.mesh.uvs.clone(),
+                    material: obj.material.clone(),
                 }
             })
             .collect();
@@ -60,18 +74,4 @@ impl Scene {
             height,
         }
     }
-}
-
-fn compute_face_normals(mesh: &Mesh, model: Mat4) -> Vec<Vec3A> {
-    let normal_matrix = Mat3A::from_mat4(model).inverse().transpose();
-    mesh.indices
-        .iter()
-        .map(|&[i0, i1, i2]| {
-            let v0 = mesh.vertices[i0];
-            let v1 = mesh.vertices[i1];
-            let v2 = mesh.vertices[i2];
-            let n = (v1 - v0).cross(v2 - v0);
-            (normal_matrix * n).normalize()
-        })
-        .collect()
 }
