@@ -46,6 +46,12 @@ impl Color {
             .unwrap_or(UVec4::ZERO);
         Color((sum / n).as_u8vec4())
     }
+    
+    pub fn lerp(&self, other: &Color, t: f32) -> Color {
+        let a = self.0.as_vec4();
+        let b = other.0.as_vec4();
+        Color(a.lerp(b, t).as_u8vec4())
+    }
 }
 
 // ---- Add ----

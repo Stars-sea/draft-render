@@ -35,9 +35,25 @@ impl Texture {
 
     pub fn sample(&self, uv: Vec2) -> Color {
         let uv = uv.fract();
-        let x = ((uv.x * self.width as f32) as usize).min(self.width - 1);
-        let y = ((uv.y * self.height as f32) as usize).min(self.height - 1);
-        self.data[y * self.width + x]
+        let (w, h) = (self.width, self.height);
+        let tx = w as f32 * uv.x;
+        let ty = h as f32 * uv.y;
+
+        let x0 = tx as usize;
+        let y0 = ty as usize;
+        let x1 = if x0 + 1 < w { x0 + 1 } else { x0 };
+        let y1 = if y0 + 1 < h { y0 + 1 } else { y0 };
+        let fx = tx.fract();
+        let fy = ty.fract();
+
+        let i00 = y0 * w + x0;
+        let i10 = y0 * w + x1;
+        let i01 = y1 * w + x0;
+        let i11 = y1 * w + x1;
+
+        let top = self.data[i00].lerp(&self.data[i10], fx);
+        let bot = self.data[i01].lerp(&self.data[i11], fx);
+        top.lerp(&bot, fy)
     }
 }
 
