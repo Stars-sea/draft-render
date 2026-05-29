@@ -64,7 +64,7 @@ impl Camera {
         );
 
         let t = Mat4::from_translation((-self.position).into());
-        r.inverse() * t
+        r.transpose() * t
     }
 
     pub fn vp_matrix(&self, aspect: f32) -> Mat4 {

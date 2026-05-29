@@ -41,9 +41,8 @@ impl Projection {
                 near: n,
                 far: f,
             } => {
-                let tan = n * (fov / 2.0).tan();
-                let hw = tan * aspect;
-                let hh = tan;
+                let half_h = n * (fov / 2.0).tan();
+                let half_w = half_h * aspect;
 
                 let squeeze = Mat4::from_cols(
                     Vec4::new(*n, 0.0, 0.0, 0.0),
@@ -52,7 +51,7 @@ impl Projection {
                     Vec4::new(0.0, 0.0, -n * f, 0.0),
                 );
 
-                Self::ortho_matrix(-hw, hw, -hh, hh, *n, *f) * squeeze
+                Self::ortho_matrix(-half_w, half_w, -half_h, half_h, *n, *f) * squeeze
             }
             Self::Orthographic {
                 left,

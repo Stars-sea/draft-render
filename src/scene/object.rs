@@ -1,19 +1,19 @@
-use crate::scene::{Material, Mesh, Transform};
-
-use std::sync::Arc;
+use crate::scene::{SubMesh, Transform};
 
 pub struct SceneObject {
-    pub mesh: Arc<Mesh>,
+    pub submeshes: Vec<SubMesh>,
     pub transform: Transform,
-    pub material: Material,
 }
 
 impl SceneObject {
-    pub fn new(mesh: Arc<Mesh>, transform: Transform, material: Material) -> Self {
+    pub fn new(submeshes: Vec<SubMesh>, transform: Transform) -> Self {
         Self {
-            mesh,
+            submeshes,
             transform,
-            material,
         }
+    }
+
+    pub fn single(submesh: SubMesh, transform: Transform) -> Self {
+        Self::new(vec![submesh], transform)
     }
 }

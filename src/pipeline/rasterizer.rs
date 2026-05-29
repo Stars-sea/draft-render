@@ -166,26 +166,26 @@ impl Triangle {
         Self { clip, world, uv, normals }
     }
 
-    fn is_backface(&self) -> bool {
-        self.normals[0].dot(-self.world[0]) <= 0.0
+    fn is_backface(&self, camera_pos: Vec3A) -> bool {
+        let face_n = (self.world[1] - self.world[0])
+            .cross(self.world[2] - self.world[0]);
+        let centroid = (self.world[0] + self.world[1] + self.world[2]) / 3.0;
+        face_n.dot(camera_pos - centroid) <= 0.0
     }
 
     fn perspective_divide(v: Vec4) -> Option<Vec3A> {
-        // w == 0 only when the vertex lies on the camera plane (z_view = 0).
-        // Near-plane clipping (n = 0.1) guarantees |w| ≥ 0.1 for every visible
-        // vertex, so exact comparison against 0.0 is sound — no rounding hazard.
-        if v.w == 0.0 {
+        if v.w <= 0.0 {
             return None;
         }
         let r = 1.0 / v.w;
         Some((v.xyz() * r).into())
     }
 
-    fn setup(&self, vp: Mat4) -> TriSetup {
-        let sa = Self::perspective_divide(vp * self.clip[0]).unwrap();
-        let sb = Self::perspective_divide(vp * self.clip[1]).unwrap();
-        let sc = Self::perspective_divide(vp * self.clip[2]).unwrap();
-        TriSetup::new(sa, sb, sc)
+    fn setup(&self, vp: Mat4) -> Option<TriSetup> {
+        let sa = Self::perspective_divide(vp * self.clip[0])?;
+        let sb = Self::perspective_divide(vp * self.clip[1])?;
+        let sc = Self::perspective_divide(vp * self.clip[2])?;
+        Some(TriSetup::new(sa, sb, sc))
     }
 
     fn interpolator(&self) -> TriInterp {
@@ -269,6 +269,7 @@ impl<const N: usize> Rasterizer<N> {
             * Mat4::from_scale(Vec3A::new(w / 2.0, -h / 2.0, 1.0).into())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn shade_fragment(
         &self,
         frag: &mut Fragment<N>,
@@ -310,7 +311,10 @@ impl<const N: usize> Rasterizer<N> {
         shader: &impl Shader,
         material: &Material,
     ) {
-        let setup = tri.setup(vp);
+        let setup = match tri.setup(vp) {
+            Some(s) => s,
+            None => return,
+        };
         let interp = tri.interpolator();
 
         for y in setup.bounds.range_y(buf.height() - 1) {
@@ -331,6 +335,7 @@ impl<const N: usize> Rasterizer<N> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_mesh(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
@@ -341,12 +346,13 @@ impl<const N: usize> Rasterizer<N> {
         indices: &[[usize; 3]],
         shader: &impl Shader,
         material: &Material,
+        camera_pos: Vec3A,
     ) {
         let vp = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
 
         for indexes in indices {
             let tri = Triangle::from_slices(vertices, world_positions, vertex_normals, uvs, indexes);
-            if tri.is_backface() {
+            if tri.is_backface(camera_pos) {
                 continue;
             }
             self.rasterize(buf, vp, &tri, shader, material);

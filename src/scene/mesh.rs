@@ -1,4 +1,6 @@
+use crate::scene::Material;
 use glam::{Vec2, Vec3A};
+use std::sync::Arc;
 
 pub struct Mesh {
     pub vertices: Vec<Vec3A>,
@@ -6,6 +8,17 @@ pub struct Mesh {
     pub uvs: Vec<Vec2>,
     /// Per-vertex normals. Empty means flat shading will be auto-computed.
     pub normals: Vec<Vec3A>,
+}
+
+pub struct SubMesh {
+    pub mesh: Arc<Mesh>,
+    pub material: Material,
+}
+
+impl SubMesh {
+    pub fn new(mesh: Arc<Mesh>, material: Material) -> Self {
+        Self { mesh, material }
+    }
 }
 
 pub struct MeshBuilder {
