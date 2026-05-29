@@ -8,7 +8,6 @@ pub struct Texture {
     pub data: Vec<Color>,
 }
 
-#[allow(unused)]
 impl Texture {
     pub fn new(width: usize, height: usize, data: Vec<Color>) -> Self {
         Self {
@@ -22,8 +21,8 @@ impl Texture {
         let mut data = vec![Color::BLACK; width * height];
         for y in 0..height {
             for x in 0..width {
-                let cx = (x / size) % 2 == 0;
-                let cy = (y / size) % 2 == 0;
+                let cx = (x / size).is_multiple_of(2);
+                let cy = (y / size).is_multiple_of(2);
                 data[y * width + x] = if cx == cy { c1 } else { c2 };
             }
         }
@@ -56,7 +55,6 @@ pub enum Material {
     },
 }
 
-#[allow(unused)]
 impl Material {
     pub fn solid(diffuse: Color) -> Self {
         Self::Solid {

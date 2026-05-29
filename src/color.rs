@@ -50,50 +50,50 @@ impl Color {
 
 // ---- Add ----
 
-impl Add<&Color> for &Color {
+impl Add<Color> for Color {
     type Output = Color;
 
-    fn add(self, rhs: &Color) -> Color {
+    fn add(self, rhs: Color) -> Color {
         Color(self.0.saturating_add(rhs.0))
     }
 }
 
-impl Add<Color> for Color {
+impl Add<&Color> for &Color {
     type Output = Color;
-    fn add(self, rhs: Color) -> Color {
-        &self + &rhs
+    fn add(self, rhs: &Color) -> Color {
+        *self + *rhs
     }
 }
 
 impl Add<Color> for &Color {
     type Output = Color;
     fn add(self, rhs: Color) -> Color {
-        self + &rhs
+        *self + rhs
     }
 }
 
 impl Add<&Color> for Color {
     type Output = Color;
     fn add(self, rhs: &Color) -> Color {
-        &self + rhs
-    }
-}
-
-impl AddAssign<&Color> for Color {
-    fn add_assign(&mut self, rhs: &Color) {
-        *self = &*self + rhs;
+        self + *rhs
     }
 }
 
 impl AddAssign<Color> for Color {
     fn add_assign(&mut self, rhs: Color) {
-        *self = &*self + &rhs;
+        *self = *self + rhs;
+    }
+}
+
+impl AddAssign<&Color> for Color {
+    fn add_assign(&mut self, rhs: &Color) {
+        *self = *self + rhs;
     }
 }
 
 // ---- Mul<f32> ----
 
-impl Mul<f32> for &Color {
+impl Mul<f32> for Color {
     type Output = Color;
 
     fn mul(self, factor: f32) -> Color {
@@ -102,59 +102,59 @@ impl Mul<f32> for &Color {
     }
 }
 
-impl Mul<f32> for Color {
+impl Mul<f32> for &Color {
     type Output = Color;
     fn mul(self, factor: f32) -> Color {
-        &self * factor
+        *self * factor
     }
 }
 
 impl MulAssign<f32> for Color {
     fn mul_assign(&mut self, factor: f32) {
-        *self = &*self * factor;
+        *self = *self * factor;
     }
 }
 
 // ---- Mul<Color> (modulate) ----
 
-impl Mul<&Color> for &Color {
+impl Mul<Color> for Color {
     type Output = Color;
 
-    fn mul(self, rhs: &Color) -> Color {
+    fn mul(self, rhs: Color) -> Color {
         let r = self.0.as_u16vec4() * rhs.0.as_u16vec4();
         Color((r / 0xFF).as_u8vec4())
     }
 }
 
-impl Mul<Color> for Color {
+impl Mul<&Color> for &Color {
     type Output = Color;
-    fn mul(self, rhs: Color) -> Color {
-        &self * &rhs
+    fn mul(self, rhs: &Color) -> Color {
+        *self * *rhs
     }
 }
 
 impl Mul<Color> for &Color {
     type Output = Color;
     fn mul(self, rhs: Color) -> Color {
-        self * &rhs
+        *self * rhs
     }
 }
 
 impl Mul<&Color> for Color {
     type Output = Color;
     fn mul(self, rhs: &Color) -> Color {
-        &self * rhs
-    }
-}
-
-impl MulAssign<&Color> for Color {
-    fn mul_assign(&mut self, rhs: &Color) {
-        *self = &*self * rhs;
+        self * *rhs
     }
 }
 
 impl MulAssign<Color> for Color {
     fn mul_assign(&mut self, rhs: Color) {
-        *self = &*self * &rhs;
+        *self = *self * rhs;
+    }
+}
+
+impl MulAssign<&Color> for Color {
+    fn mul_assign(&mut self, rhs: &Color) {
+        *self = *self * rhs;
     }
 }
