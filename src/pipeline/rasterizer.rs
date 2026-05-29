@@ -1,6 +1,7 @@
 use crate::color::Color;
 use crate::pipeline::buffer::RenderBuffer;
 use crate::pipeline::fragment::Fragment;
+use crate::pipeline::job::DrawBatch;
 use crate::pipeline::shader::Shader;
 use crate::scene::Material;
 
@@ -163,14 +164,12 @@ impl Triangle {
             let fnorm = (world[1] - world[0]).cross(world[2] - world[0]).normalize();
             [fnorm; 3]
         };
-        Self { clip, world, uv, normals }
-    }
-
-    fn is_backface(&self, camera_pos: Vec3A) -> bool {
-        let face_n = (self.world[1] - self.world[0])
-            .cross(self.world[2] - self.world[0]);
-        let centroid = (self.world[0] + self.world[1] + self.world[2]) / 3.0;
-        face_n.dot(camera_pos - centroid) <= 0.0
+        Self {
+            clip,
+            world,
+            uv,
+            normals,
+        }
     }
 
     fn perspective_divide(v: Vec4) -> Option<Vec3A> {
@@ -320,42 +319,30 @@ impl<const N: usize> Rasterizer<N> {
         for y in setup.bounds.range_y(buf.height() - 1) {
             let (mut u, mut v) = setup.row_start(y);
             for x in setup.bounds.range_x(buf.width() - 1) {
-                self.shade_fragment(
-                    buf.get_mut(x, y),
-                    &setup,
-                    &interp,
-                    shader,
-                    material,
-                    u,
-                    v,
-                );
+                self.shade_fragment(buf.get_mut(x, y), &setup, &interp, shader, material, u, v);
                 u += setup.u_grad.x;
                 v += setup.v_grad.x;
             }
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_mesh(
         &self,
         buf: &mut RenderBuffer<Fragment<N>>,
-        vertices: &[Vec4],
-        world_positions: &[Vec3A],
-        vertex_normals: &[Vec3A],
-        uvs: &[Vec2],
-        indices: &[[usize; 3]],
+        batch: &DrawBatch,
         shader: &impl Shader,
-        material: &Material,
-        camera_pos: Vec3A,
     ) {
         let vp = Self::viewport_matrix(buf.width() as f32, buf.height() as f32);
 
-        for indexes in indices {
-            let tri = Triangle::from_slices(vertices, world_positions, vertex_normals, uvs, indexes);
-            if !material.double_sided() && tri.is_backface(camera_pos) {
-                continue;
-            }
-            self.rasterize(buf, vp, &tri, shader, material);
+        for indexes in &batch.indices {
+            let tri = Triangle::from_slices(
+                &batch.clip_vertices,
+                &batch.world_positions,
+                &batch.vertex_normals,
+                &batch.uvs,
+                indexes,
+            );
+            self.rasterize(buf, vp, &tri, shader, &batch.material);
         }
     }
 

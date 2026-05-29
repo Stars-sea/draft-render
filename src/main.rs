@@ -1,12 +1,10 @@
 mod color;
 mod pipeline;
 mod pmx;
-mod render_thread;
 mod scene;
 
 use crate::color::Color;
-use crate::pipeline::Rasterizer;
-use crate::render_thread::{RenderJob, RenderResult};
+use crate::pipeline::{render_loop, Rasterizer, RenderJob, RenderResult};
 use crate::scene::{
     Camera, DirectionalLight, Material, MeshBuilder, PointLight, Scene, SceneObject, SubMesh,
     Texture, Transform,
@@ -47,7 +45,7 @@ fn main() -> Result<()> {
     let (job_tx, job_rx) = mpsc::sync_channel::<RenderJob>(1);
     let (result_tx, result_rx) = mpsc::sync_channel::<RenderResult>(1);
 
-    thread::spawn(move || render_thread::render_loop(Rasterizer::<4>::MSAA_4X, job_rx, result_tx));
+    thread::spawn(move || render_loop(Rasterizer::<4>::MSAA_4X, job_rx, result_tx));
 
     let mut window = Window::new("cube", width, height, WindowOptions::default())?;
     let start = Instant::now();
@@ -58,7 +56,7 @@ fn main() -> Result<()> {
             .transform
             .set_rotation(Quat::from_axis_angle(Vec3A::Y.into(), angle));
 
-        let job = scene.build_render_job(width, height);
+        let job = RenderJob::from_scene(&scene, width, height);
         if job_tx.send(job).is_err() {
             break;
         }

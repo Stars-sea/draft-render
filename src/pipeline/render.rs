@@ -1,25 +1,6 @@
+use crate::pipeline::job::RenderJob;
 use crate::pipeline::{BlinnPhongShader, Fragment, Rasterizer, RenderBuffer};
-use crate::scene::{Light, Material};
-
-use glam::{Vec2, Vec3A, Vec4};
-use std::sync::{Arc, mpsc};
-
-pub struct RenderJob {
-    pub lights: Vec<Arc<dyn Light + Send + Sync>>,
-    pub batches: Vec<DrawBatch>,
-    pub camera_pos: Vec3A,
-    pub width: usize,
-    pub height: usize,
-}
-
-pub struct DrawBatch {
-    pub indices: Vec<[usize; 3]>,
-    pub clip_vertices: Vec<Vec4>,
-    pub world_positions: Vec<Vec3A>,
-    pub vertex_normals: Vec<Vec3A>,
-    pub uvs: Vec<Vec2>,
-    pub material: Material,
-}
+use std::sync::mpsc;
 
 pub enum RenderResult {
     FrameReady(Vec<u32>),
@@ -48,17 +29,7 @@ pub fn render_loop<const N: usize>(
         let shader = BlinnPhongShader::new(job.lights.clone());
 
         for batch in &job.batches {
-            rasterizer.draw_mesh(
-                &mut frag_buf,
-                &batch.clip_vertices,
-                &batch.world_positions,
-                &batch.vertex_normals,
-                &batch.uvs,
-                &batch.indices,
-                &shader,
-                &batch.material,
-                job.camera_pos,
-            );
+            rasterizer.draw_mesh(&mut frag_buf, batch, &shader);
         }
 
         rasterizer.resolve(&frag_buf, &mut frame_buffer);
