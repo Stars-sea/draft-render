@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 glam = "0.33.0"
+image = "0.25"
 minifb = "0.28.0"
