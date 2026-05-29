@@ -5,17 +5,15 @@ pub struct Camera {
     position: Vec3A,
     rotation: Quat,
     proj: Projection,
-
-    vp_cache: Option<Mat4>,
 }
 
+#[allow(unused)]
 impl Camera {
     pub fn new(position: Vec3A, rotation: Quat, proj: Projection) -> Self {
         Self {
             position,
             rotation,
             proj,
-            vp_cache: None,
         }
     }
 
@@ -31,15 +29,12 @@ impl Camera {
 
     pub fn set_position(&mut self, position: Vec3A) {
         self.position = position;
-        self.vp_cache = None;
     }
     pub fn set_rotation(&mut self, rotation: Quat) {
         self.rotation = rotation;
-        self.vp_cache = None;
     }
     pub fn set_projection(&mut self, projection: Projection) {
         self.proj = projection;
-        self.vp_cache = None;
     }
 
     pub fn with_position(mut self, position: Vec3A) -> Self {
@@ -72,10 +67,8 @@ impl Camera {
         r.inverse() * t
     }
 
-    pub fn vp_matrix(&mut self, aspect: f32) -> Mat4 {
-        let vp = self.proj.projection_matrix(aspect) * self.view_matrix();
-        self.vp_cache = Some(vp);
-        vp
+    pub fn vp_matrix(&self, aspect: f32) -> Mat4 {
+        self.proj.projection_matrix(aspect) * self.view_matrix()
     }
 }
 

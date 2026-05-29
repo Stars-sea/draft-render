@@ -22,6 +22,7 @@ impl Projection {
         Self::Perspective { fov, near, far }
     }
 
+    #[allow(unused)]
     pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Self {
         Self::Orthographic {
             left,
@@ -33,12 +34,6 @@ impl Projection {
         }
     }
 
-    fn orthographic_from_size(width: f32, height: f32, near: f32, far: f32) -> Self {
-        let hw = width / 2.0;
-        let hh = height / 2.0;
-        Self::orthographic(-hw, hw, -hh, hh, near, far)
-    }
-
     pub fn projection_matrix(&self, aspect: f32) -> Mat4 {
         match self {
             Self::Perspective {
@@ -47,8 +42,8 @@ impl Projection {
                 far: f,
             } => {
                 let tan = n * (fov / 2.0).tan();
-                let width = 2.0 * tan * aspect;
-                let height = 2.0 * tan;
+                let hw = tan * aspect;
+                let hh = tan;
 
                 let squeeze = Mat4::from_cols(
                     Vec4::new(*n, 0.0, 0.0, 0.0),
@@ -57,8 +52,7 @@ impl Projection {
                     Vec4::new(0.0, 0.0, -n * f, 0.0),
                 );
 
-                let ortho = Self::orthographic_from_size(width, height, *n, *f);
-                ortho.projection_matrix(aspect) * squeeze
+                Self::ortho_matrix(-hw, hw, -hh, hh, *n, *f) * squeeze
             }
             Self::Orthographic {
                 left,
@@ -67,14 +61,14 @@ impl Projection {
                 top,
                 near,
                 far,
-            } => {
-                let (l, r, b, t, n, f) = (*left, *right, *bottom, *top, *near, *far);
-                let center = Vec3::new((r + l) / 2.0, (t + b) / 2.0, (n + f) / 2.0);
-                let ms = Mat4::from_scale(Vec3::new(2.0 / (r - l), 2.0 / (t - b), 2.0 / (f - n)));
-                let mt = Mat4::from_translation(-center);
-                ms * mt
-            }
+            } => Self::ortho_matrix(*left, *right, *bottom, *top, *near, *far),
         }
+    }
+
+    fn ortho_matrix(l: f32, r: f32, b: f32, t: f32, n: f32, f: f32) -> Mat4 {
+        let ms = Mat4::from_scale(Vec3::new(2.0 / (r - l), 2.0 / (t - b), 2.0 / (f - n)));
+        let mt = Mat4::from_translation(-Vec3::new((r + l) / 2.0, (t + b) / 2.0, (n + f) / 2.0));
+        ms * mt
     }
 }
 

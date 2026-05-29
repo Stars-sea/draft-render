@@ -66,6 +66,6 @@ impl Light for PointLight {
     }
     fn attenuation(&self, point: Vec3A) -> f32 {
         let d = self.position.distance(point);
-        1.0 / (d * d)
+        1.0 / (1.0 + d * d)
     }
 }

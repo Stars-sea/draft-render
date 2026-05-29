@@ -7,7 +7,8 @@ use crate::color::Color;
 use crate::pipeline::Rasterizer;
 use crate::render_thread::{RenderJob, RenderResult};
 use crate::scene::{
-    Camera, DirectionalLight, MeshBuilder, PointLight, Scene, SceneObject, Transform,
+    Camera, DirectionalLight, Material, MeshBuilder, PointLight, Scene, SceneObject, Texture,
+    Transform,
 };
 
 use anyhow::Result;
@@ -23,6 +24,7 @@ fn main() -> Result<()> {
 
     let mut scene = Scene::new(Camera::default());
     scene.add_object(cube());
+    scene.add_object(textured_quad());
     scene.add_light(directional_light());
     scene.add_light(point_light());
 
@@ -56,7 +58,7 @@ fn main() -> Result<()> {
 
 fn directional_light() -> Arc<DirectionalLight> {
     Arc::new(DirectionalLight::new(
-        Vec3A::new(0.0, -1.0, -1.0),
+        Vec3A::new(0.0, 1.0, -1.0),
         Color::WHITE,
         1.0,
     ))
@@ -98,6 +100,34 @@ fn cube() -> SceneObject {
     SceneObject::new(
         Arc::new(builder.build()),
         transform,
-        Color::rgb(200, 120, 60),
+        Material::solid(Color::rgb(200, 120, 60)),
+    )
+}
+
+fn textured_quad() -> SceneObject {
+    let texture = Arc::new(Texture::checkerboard(
+        256,
+        256,
+        32,
+        Color::WHITE,
+        Color::rgb(50, 50, 160),
+    ));
+    let builder = MeshBuilder::new()
+        .vertex(Vec3A::new(-0.5, -0.5, 0.0))
+        .uv(0.0, 0.0)
+        .vertex(Vec3A::new(0.5, -0.5, 0.0))
+        .uv(1.0, 0.0)
+        .vertex(Vec3A::new(0.5, 0.5, 0.0))
+        .uv(1.0, 1.0)
+        .vertex(Vec3A::new(-0.5, 0.5, 0.0))
+        .uv(0.0, 1.0)
+        .triangle(0, 2, 1)
+        .triangle(0, 3, 2);
+
+    let transform = Transform::default().with_translation(Vec3A::new(1.5, 0.0, 3.0));
+    SceneObject::new(
+        Arc::new(builder.build()),
+        transform,
+        Material::textured(texture),
     )
 }
