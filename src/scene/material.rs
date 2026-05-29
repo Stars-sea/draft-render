@@ -63,11 +63,13 @@ pub enum Material {
         diffuse: Color,
         specular: Color,
         shininess: f32,
+        double_sided: bool,
     },
     Textured {
         texture: Arc<Texture>,
         specular: Color,
         shininess: f32,
+        double_sided: bool,
     },
 }
 
@@ -77,6 +79,7 @@ impl Material {
             diffuse,
             specular: Color::WHITE,
             shininess: 32.0,
+            double_sided: false,
         }
     }
 
@@ -85,6 +88,7 @@ impl Material {
             texture,
             specular: Color::WHITE,
             shininess: 32.0,
+            double_sided: false,
         }
     }
 
@@ -99,6 +103,15 @@ impl Material {
         match &mut self {
             Self::Solid { shininess: sh, .. } | Self::Textured { shininess: sh, .. } => {
                 *sh = shininess
+            }
+        }
+        self
+    }
+
+    pub fn with_double_sided(mut self) -> Self {
+        match &mut self {
+            Self::Solid { double_sided: d, .. } | Self::Textured { double_sided: d, .. } => {
+                *d = true
             }
         }
         self
@@ -120,6 +133,12 @@ impl Material {
     pub fn shininess(&self) -> f32 {
         match self {
             Self::Solid { shininess, .. } | Self::Textured { shininess, .. } => *shininess,
+        }
+    }
+
+    pub fn double_sided(&self) -> bool {
+        match self {
+            Self::Solid { double_sided, .. } | Self::Textured { double_sided, .. } => *double_sided,
         }
     }
 }

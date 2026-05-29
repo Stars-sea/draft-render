@@ -11,6 +11,7 @@ pub(crate) struct PmxMaterial {
     pub shininess: f32,
     pub texture_index: Option<usize>,
     pub num_face_vertices: i32,
+    pub no_cull: bool,
 }
 
 impl PmxMaterial {
@@ -27,7 +28,7 @@ impl PmxMaterial {
             .and_then(|i| textures.get(i))
             .and_then(|p| load_texture(pmx_dir, p));
 
-        let base = match tex {
+        let mut base = match tex {
             Some(t) => Material::textured(Arc::new(t)),
             None => Material::solid(Color::argb(
                 f32_to_u8(self.diffuse[3]),
@@ -36,6 +37,9 @@ impl PmxMaterial {
                 f32_to_u8(self.diffuse[2]),
             )),
         };
+        if self.no_cull {
+            base = base.with_double_sided();
+        }
         base.with_specular(spec).with_shininess(self.shininess)
     }
 }
@@ -64,7 +68,7 @@ pub(crate) fn read_materials(r: &mut Reader) -> Result<Vec<PmxMaterial>> {
         let specular = [r.read_f32()?, r.read_f32()?, r.read_f32()?];
         let shininess = r.read_f32()?;
         let _ambient = [r.read_f32()?, r.read_f32()?, r.read_f32()?];
-        let _flags = r.read_u8()?;
+        let flags = r.read_u8()?;
         let _edge_color = [r.read_f32()?, r.read_f32()?, r.read_f32()?, r.read_f32()?];
         let _edge_size = r.read_f32()?;
         let texture_index = r.read_texture_index()?;
@@ -84,6 +88,7 @@ pub(crate) fn read_materials(r: &mut Reader) -> Result<Vec<PmxMaterial>> {
             shininess,
             texture_index,
             num_face_vertices,
+            no_cull: flags & 0x01 != 0,
         });
     }
     Ok(mats)

@@ -352,7 +352,7 @@ impl<const N: usize> Rasterizer<N> {
 
         for indexes in indices {
             let tri = Triangle::from_slices(vertices, world_positions, vertex_normals, uvs, indexes);
-            if tri.is_backface(camera_pos) {
+            if !material.double_sided() && tri.is_backface(camera_pos) {
                 continue;
             }
             self.rasterize(buf, vp, &tri, shader, material);
