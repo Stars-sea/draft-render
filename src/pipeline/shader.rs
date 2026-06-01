@@ -37,6 +37,13 @@ impl Shader for BlinnPhongShader {
         let specular = material.specular();
         let shininess = material.shininess();
 
+        let v = -world_pos.normalize();
+        let normal = if material.double_sided() && normal.dot(v) < 0.0 {
+            -normal
+        } else {
+            normal
+        };
+
         let mut diff_light = Color::BLACK;
         let mut spec_light = Color::BLACK;
 
@@ -47,7 +54,6 @@ impl Shader for BlinnPhongShader {
                 continue;
             }
 
-            let v = -world_pos.normalize();
             let h = (l + v).normalize();
             let n_dot_h = normal.dot(h);
             if n_dot_h <= 0.0 {
