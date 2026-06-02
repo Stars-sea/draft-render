@@ -58,87 +58,46 @@ impl Texture {
 }
 
 #[derive(Clone)]
-pub enum Material {
-    Solid {
-        diffuse: Color,
-        specular: Color,
-        shininess: f32,
-        double_sided: bool,
-    },
-    Textured {
-        texture: Arc<Texture>,
-        specular: Color,
-        shininess: f32,
-        double_sided: bool,
-    },
+pub struct Material {
+    pub albedo: Color,
+    pub emission: Color,
+    pub double_sided: bool,
+    pub texture: Option<Arc<Texture>>,
 }
 
 impl Material {
-    pub fn solid(diffuse: Color) -> Self {
-        Self::Solid {
-            diffuse,
-            specular: Color::WHITE,
-            shininess: 32.0,
+    pub fn solid(albedo: Color) -> Self {
+        Self {
+            albedo,
+            emission: Color::BLACK,
             double_sided: false,
+            texture: None,
         }
     }
 
     pub fn textured(texture: Arc<Texture>) -> Self {
-        Self::Textured {
-            texture,
-            specular: Color::WHITE,
-            shininess: 32.0,
+        Self {
+            albedo: Color::WHITE,
+            emission: Color::BLACK,
             double_sided: false,
+            texture: Some(texture),
         }
-    }
-
-    pub fn with_specular(mut self, specular: Color) -> Self {
-        match &mut self {
-            Self::Solid { specular: s, .. } | Self::Textured { specular: s, .. } => *s = specular,
-        }
-        self
-    }
-
-    pub fn with_shininess(mut self, shininess: f32) -> Self {
-        match &mut self {
-            Self::Solid { shininess: sh, .. } | Self::Textured { shininess: sh, .. } => {
-                *sh = shininess
-            }
-        }
-        self
     }
 
     pub fn with_double_sided(mut self) -> Self {
-        match &mut self {
-            Self::Solid { double_sided: d, .. } | Self::Textured { double_sided: d, .. } => {
-                *d = true
-            }
-        }
+        self.double_sided = true;
         self
     }
 
-    pub fn diffuse(&self, tex_uv: Vec2) -> Color {
-        match self {
-            Self::Solid { diffuse, .. } => *diffuse,
-            Self::Textured { texture, .. } => texture.sample(tex_uv),
-        }
-    }
-
-    pub fn specular(&self) -> Color {
-        match self {
-            Self::Solid { specular, .. } | Self::Textured { specular, .. } => *specular,
-        }
-    }
-
-    pub fn shininess(&self) -> f32 {
-        match self {
-            Self::Solid { shininess, .. } | Self::Textured { shininess, .. } => *shininess,
+    /// Evaluate the surface albedo at the given texture coordinate.
+    pub fn albedo_at(&self, uv: Vec2) -> Color {
+        match &self.texture {
+            Some(tex) => tex.sample(uv),
+            None => self.albedo,
         }
     }
 
     pub fn double_sided(&self) -> bool {
-        match self {
-            Self::Solid { double_sided, .. } | Self::Textured { double_sided, .. } => *double_sided,
-        }
+        self.double_sided
     }
 }

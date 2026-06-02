@@ -11,10 +11,14 @@ const NULL_NODE: u32 = u32::MAX;
 /// All nodes live in a single contiguous `Vec` for cache-friendly traversal.
 /// Triangles are reordered during construction so that leaves reference
 /// contiguous ranges.  Built with binned SAH for higher-quality splits.
+///
+/// `material_ids[i]` corresponds to `triangles[i]` and survives the same
+/// reordering so a hit shader can look up the material by triangle index.
 pub struct Bvh {
     nodes: Vec<BvhNode>,
     root: u32,
     pub triangles: Vec<Triangle>,
+    pub material_ids: Vec<u32>,
 }
 
 enum BvhNode {
@@ -40,12 +44,18 @@ impl BvhNode {
 }
 
 impl Bvh {
-    pub fn build(mut triangles: Vec<Triangle>) -> Self {
+    pub fn build(mut triangles: Vec<Triangle>, mut material_ids: Vec<u32>) -> Self {
+        assert_eq!(
+            triangles.len(),
+            material_ids.len(),
+            "material_ids must match triangles"
+        );
         let len = triangles.len();
         let mut nodes = Vec::with_capacity(len * 2);
         let root = BvhBuilder {
             nodes: &mut nodes,
             triangles: &mut triangles,
+            material_ids: &mut material_ids,
         }
         .build();
         nodes.shrink_to_fit();
@@ -53,6 +63,7 @@ impl Bvh {
             nodes,
             root,
             triangles,
+            material_ids,
         }
     }
 
@@ -89,6 +100,7 @@ const SAH_INTERSECT: f32 = 1.0;
 struct BvhBuilder<'a> {
     nodes: &'a mut Vec<BvhNode>,
     triangles: &'a mut [Triangle],
+    material_ids: &'a mut [u32],
 }
 
 impl<'a> BvhBuilder<'a> {
@@ -121,11 +133,25 @@ impl<'a> BvhBuilder<'a> {
 
         let (axis, left_count) = self.sah_or_median(start, end, &bbox);
         let mid = start + left_count;
-        self.triangles[start..end].sort_by(|a, b| {
-            a.centroid()[axis]
-                .partial_cmp(&b.centroid()[axis])
-                .unwrap_or(Ordering::Equal)
-        });
+
+        // Sort triangles and material_ids in lockstep by centroid along `axis`.
+        {
+            let tris = &self.triangles[start..end];
+            let mut indices: Vec<usize> = (0..tris.len()).collect();
+            indices.sort_unstable_by(|&a, &b| {
+                tris[a].centroid()[axis]
+                    .partial_cmp(&tris[b].centroid()[axis])
+                    .unwrap_or(Ordering::Equal)
+            });
+            // Apply permutation to both slices.
+            let tmp_tris: Vec<_> = indices.iter().map(|&i| tris[i]).collect();
+            let tmp_ids: Vec<_> = indices
+                .iter()
+                .map(|&i| self.material_ids[start + i])
+                .collect();
+            self.triangles[start..end].copy_from_slice(&tmp_tris);
+            self.material_ids[start..end].copy_from_slice(&tmp_ids);
+        }
 
         let left = self.build_range(start, mid, depth + 1);
         let right = self.build_range(mid, end, depth + 1);
@@ -459,7 +485,7 @@ mod tests {
 
     #[test]
     fn bvh_build_empty() {
-        let bvh = Bvh::build(vec![]);
+        let bvh = Bvh::build(vec![], vec![]);
         assert!(
             bvh.intersect(&Ray::new(Vec3A::ZERO, Vec3A::Z), 0.0, 100.0)
                 .is_none()
@@ -472,8 +498,9 @@ mod tests {
             Vec3A::new(0.0, 0.0, 1.0),
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
+            0,
         );
-        let bvh = Bvh::build(vec![tri]);
+        let bvh = Bvh::build(vec![tri], vec![0]);
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         let hit = bvh.intersect(&ray, 0.0, 100.0);
         assert!(hit.is_some());
@@ -486,8 +513,9 @@ mod tests {
             Vec3A::new(0.0, 0.0, 1.0),
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
+            0,
         );
-        let bvh = Bvh::build(vec![tri]);
+        let bvh = Bvh::build(vec![tri], vec![0]);
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         assert!(bvh.intersect_any(&ray, 0.0, 100.0));
         let miss = Ray::new(Vec3A::new(2.0, 2.0, 0.0), Vec3A::new(0.0, 0.0, 1.0));
@@ -499,6 +527,7 @@ mod tests {
         // 25 triangles spread across a 5x5 grid at varying depths (z=1..26).
         // Exercises the SAH / median split path (count > LEAF_SIZE).
         let mut tris = Vec::new();
+        let mut ids = Vec::new();
         for row in 0..5 {
             for col in 0..5 {
                 let x = col as f32;
@@ -508,10 +537,12 @@ mod tests {
                     Vec3A::new(x, y, z),
                     Vec3A::new(x + 0.8, y, z),
                     Vec3A::new(x, y + 0.8, z),
+                    (row * 5 + col) as u32,
                 ));
+                ids.push((row * 5 + col) as u32);
             }
         }
-        let bvh = Bvh::build(tris);
+        let bvh = Bvh::build(tris, ids);
 
         // Ray aimed at center of triangle (col=2, row=3), index = 3*5+2 = 17
         let ray = Ray::new(Vec3A::new(2.2, 3.2, 0.0), Vec3A::new(0.0, 0.0, 1.0));

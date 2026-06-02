@@ -33,10 +33,7 @@ impl Shader for BlinnPhongShader {
         normal: Vec3A,
         world_pos: Vec3A,
     ) -> Color {
-        let diffuse = material.diffuse(tex_uv);
-        let specular = material.specular();
-        let shininess = material.shininess();
-
+        let albedo = material.albedo_at(tex_uv);
         let v = -world_pos.normalize();
         let normal = if material.double_sided() && normal.dot(v) < 0.0 {
             -normal
@@ -45,7 +42,6 @@ impl Shader for BlinnPhongShader {
         };
 
         let mut diff_light = Color::BLACK;
-        let mut spec_light = Color::BLACK;
 
         for light in &self.lights {
             let l = light.direction(world_pos);
@@ -53,18 +49,11 @@ impl Shader for BlinnPhongShader {
             if n_dot_l <= 0.0 {
                 continue;
             }
-
-            let h = (l + v).normalize();
-            let n_dot_h = normal.dot(h);
-            if n_dot_h <= 0.0 {
-                continue;
-            }
             let i = light.intensity();
             let attn = light.attenuation(world_pos);
             diff_light += light.color() * (i * attn * n_dot_l);
-            spec_light += light.color() * (i * attn * n_dot_h.powf(shininess));
         }
 
-        diffuse * 0.1 + diffuse * diff_light + specular * spec_light
+        albedo * 0.1 + albedo * diff_light
     }
 }

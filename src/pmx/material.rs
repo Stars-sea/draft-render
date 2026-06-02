@@ -18,11 +18,6 @@ impl PmxMaterial {
     /// Converts this PMX material to a scene Material, loading the referenced
     /// texture file if present. Falls back to the diffuse colour on failure.
     pub fn to_material(&self, textures: &[String], pmx_dir: &Path) -> Material {
-        let spec = Color::rgb(
-            f32_to_u8(self.specular[0]),
-            f32_to_u8(self.specular[1]),
-            f32_to_u8(self.specular[2]),
-        );
         let tex = self
             .texture_index
             .and_then(|i| textures.get(i))
@@ -40,7 +35,7 @@ impl PmxMaterial {
         if self.no_cull {
             base = base.with_double_sided();
         }
-        base.with_specular(spec).with_shininess(self.shininess)
+        base
     }
 }
 

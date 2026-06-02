@@ -1,56 +1,62 @@
-use glam::{U8Vec4, UVec4, Vec4};
+use glam::Vec3A;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Color(U8Vec4);
+/// Linear-RGB colour backed by `Vec3A`.  HDR values (components > 1.0) are
+/// supported; they are tone-mapped only when converting to display-ready u32.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Color(pub Vec3A);
 
 impl Color {
-    pub const TRANSPARENT: Color = Color(U8Vec4::ZERO);
-    pub const BLACK: Color = Color(U8Vec4::new(0, 0, 0, 0xFF));
-    pub const WHITE: Color = Color(U8Vec4::new(0xFF, 0xFF, 0xFF, 0xFF));
-    pub const RED: Color = Color(U8Vec4::new(0xFF, 0, 0, 0xFF));
-    pub const GREEN: Color = Color(U8Vec4::new(0, 0xFF, 0, 0xFF));
-    pub const BLUE: Color = Color(U8Vec4::new(0, 0, 0xFF, 0xFF));
-
-    pub fn argb(a: u8, r: u8, g: u8, b: u8) -> Color {
-        Color(U8Vec4::new(r, g, b, a))
-    }
+    pub const BLACK: Color = Color(Vec3A::ZERO);
+    pub const WHITE: Color = Color(Vec3A::ONE);
+    pub const RED: Color = Color(Vec3A::new(1.0, 0.0, 0.0));
+    pub const GREEN: Color = Color(Vec3A::new(0.0, 1.0, 0.0));
+    pub const BLUE: Color = Color(Vec3A::new(0.0, 0.0, 1.0));
 
     pub fn rgb(r: u8, g: u8, b: u8) -> Color {
-        Color::argb(0xFF, r, g, b)
+        Color(Vec3A::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+        ))
     }
 
-    pub fn to_u32(self) -> u32 {
-        (self.0.w as u32) << 24 | (self.0.x as u32) << 16 | (self.0.y as u32) << 8 | self.0.z as u32
+    /// alpha channel is ignored (kept for compatibility with PMX texture loading).
+    pub fn argb(_a: u8, r: u8, g: u8, b: u8) -> Color {
+        Color::rgb(r, g, b)
     }
 
-    pub fn a(&self) -> u8 {
-        self.0.w
-    }
-    pub fn r(&self) -> u8 {
+    pub fn r(&self) -> f32 {
         self.0.x
     }
-    pub fn g(&self) -> u8 {
+    pub fn g(&self) -> f32 {
         self.0.y
     }
-    pub fn b(&self) -> u8 {
+    pub fn b(&self) -> f32 {
         self.0.z
     }
 
-    pub fn average(samples: &[Color]) -> Color {
-        let n = samples.len() as u32;
-        let sum = samples
-            .iter()
-            .map(|c| c.0.as_uvec4())
-            .reduce(|a, b| a + b)
-            .unwrap_or(UVec4::ZERO);
-        Color((sum / n).as_u8vec4())
+    /// Reinhard tone-map + sRGB gamma → ARGB `u32` for the framebuffer.
+    pub fn to_u32(&self) -> u32 {
+        let mapped = self.0 / (self.0 + Vec3A::ONE);
+        let gamma = mapped.powf(1.0 / 2.2);
+        let c = (gamma.clamp(Vec3A::ZERO, Vec3A::ONE) * 255.0).round();
+        0xFF00_0000 | ((c.x as u32) << 16) | ((c.y as u32) << 8) | (c.z as u32)
     }
-    
+
+    pub fn average(samples: &[Color]) -> Color {
+        if samples.is_empty() {
+            return Color::BLACK;
+        }
+        let mut sum = Vec3A::ZERO;
+        for s in samples {
+            sum += s.0;
+        }
+        Color(sum / samples.len() as f32)
+    }
+
     pub fn lerp(&self, other: &Color, t: f32) -> Color {
-        let a = self.0.as_vec4();
-        let b = other.0.as_vec4();
-        Color(a.lerp(b, t).as_u8vec4())
+        Color(self.0.lerp(other.0, t))
     }
 }
 
@@ -58,42 +64,14 @@ impl Color {
 
 impl Add<Color> for Color {
     type Output = Color;
-
     fn add(self, rhs: Color) -> Color {
-        Color(self.0.saturating_add(rhs.0))
-    }
-}
-
-impl Add<&Color> for &Color {
-    type Output = Color;
-    fn add(self, rhs: &Color) -> Color {
-        *self + *rhs
-    }
-}
-
-impl Add<Color> for &Color {
-    type Output = Color;
-    fn add(self, rhs: Color) -> Color {
-        *self + rhs
-    }
-}
-
-impl Add<&Color> for Color {
-    type Output = Color;
-    fn add(self, rhs: &Color) -> Color {
-        self + *rhs
+        Color(self.0 + rhs.0)
     }
 }
 
 impl AddAssign<Color> for Color {
     fn add_assign(&mut self, rhs: Color) {
-        *self = *self + rhs;
-    }
-}
-
-impl AddAssign<&Color> for Color {
-    fn add_assign(&mut self, rhs: &Color) {
-        *self = *self + rhs;
+        self.0 += rhs.0;
     }
 }
 
@@ -101,23 +79,14 @@ impl AddAssign<&Color> for Color {
 
 impl Mul<f32> for Color {
     type Output = Color;
-
     fn mul(self, factor: f32) -> Color {
-        let v = (self.0.as_vec4() * factor).clamp(Vec4::ZERO, Vec4::splat(255.0));
-        Color(v.as_u8vec4())
-    }
-}
-
-impl Mul<f32> for &Color {
-    type Output = Color;
-    fn mul(self, factor: f32) -> Color {
-        *self * factor
+        Color(self.0 * factor)
     }
 }
 
 impl MulAssign<f32> for Color {
     fn mul_assign(&mut self, factor: f32) {
-        *self = *self * factor;
+        self.0 *= factor;
     }
 }
 
@@ -125,42 +94,13 @@ impl MulAssign<f32> for Color {
 
 impl Mul<Color> for Color {
     type Output = Color;
-
     fn mul(self, rhs: Color) -> Color {
-        let r = self.0.as_u16vec4() * rhs.0.as_u16vec4();
-        Color((r / 0xFF).as_u8vec4())
-    }
-}
-
-impl Mul<&Color> for &Color {
-    type Output = Color;
-    fn mul(self, rhs: &Color) -> Color {
-        *self * *rhs
-    }
-}
-
-impl Mul<Color> for &Color {
-    type Output = Color;
-    fn mul(self, rhs: Color) -> Color {
-        *self * rhs
-    }
-}
-
-impl Mul<&Color> for Color {
-    type Output = Color;
-    fn mul(self, rhs: &Color) -> Color {
-        self * *rhs
+        Color(self.0 * rhs.0)
     }
 }
 
 impl MulAssign<Color> for Color {
     fn mul_assign(&mut self, rhs: Color) {
-        *self = *self * rhs;
-    }
-}
-
-impl MulAssign<&Color> for Color {
-    fn mul_assign(&mut self, rhs: &Color) {
-        *self = *self * rhs;
+        self.0 *= rhs.0;
     }
 }

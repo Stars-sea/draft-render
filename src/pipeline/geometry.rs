@@ -28,21 +28,24 @@ impl Ray {
 
 /// World-space triangle with pre-computed edges.
 ///
-/// Storing `e1` and `e2` avoids recomputing them on every ray intersection
-/// while keeping the struct at the same 48 bytes (3 × Vec3A).
+/// Storing `e1` and `e2` avoids recomputing them on every ray intersection.
+/// `material_id` survives BVH reordering so the hit shader can look up the
+/// correct material.
 #[derive(Clone, Copy)]
 pub struct Triangle {
     pub v0: Vec3A,
     pub e1: Vec3A,
     pub e2: Vec3A,
+    pub material_id: u32,
 }
 
 impl Triangle {
-    pub fn new(v0: Vec3A, v1: Vec3A, v2: Vec3A) -> Self {
+    pub fn new(v0: Vec3A, v1: Vec3A, v2: Vec3A, material_id: u32) -> Self {
         Self {
             v0,
             e1: v1 - v0,
             e2: v2 - v0,
+            material_id,
         }
     }
 
@@ -120,6 +123,7 @@ mod tests {
             Vec3A::new(0.0, 0.0, 1.0),
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
+            0,
         );
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         let hit = intersect(&ray, &tri);
@@ -136,6 +140,7 @@ mod tests {
             Vec3A::new(0.0, 0.0, 1.0),
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
+            0,
         );
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(1.0, 0.0, 0.0));
         assert!(intersect(&ray, &tri).is_none());
@@ -147,6 +152,7 @@ mod tests {
             Vec3A::new(0.0, 0.0, -1.0),
             Vec3A::new(1.0, 0.0, -1.0),
             Vec3A::new(0.0, 1.0, -1.0),
+            0,
         );
         let ray = Ray::new(Vec3A::ZERO, Vec3A::Z);
         assert!(intersect(&ray, &tri).is_none());
@@ -158,6 +164,7 @@ mod tests {
             Vec3A::new(0.0, 0.0, 0.0),
             Vec3A::new(1.0, 0.0, 0.0),
             Vec3A::new(0.0, 1.0, 0.0),
+            0,
         );
         let c = tri.centroid();
         assert!((c.x - 0.333333).abs() < 1e-4);
@@ -171,6 +178,7 @@ mod tests {
             Vec3A::new(0.0, 0.0, 0.0),
             Vec3A::new(2.0, 0.0, 0.0),
             Vec3A::new(0.0, 2.0, 0.0),
+            0,
         );
         let n = tri.normal();
         assert!((n.length() - 1.0).abs() < 1e-4);
@@ -182,6 +190,7 @@ mod tests {
             Vec3A::new(1.0, 0.0, 0.0),
             Vec3A::new(3.0, 0.0, 0.0),
             Vec3A::new(1.0, 2.0, 0.0),
+            0,
         );
         assert_eq!(tri.e1, Vec3A::new(2.0, 0.0, 0.0));
         assert_eq!(tri.e2, Vec3A::new(0.0, 2.0, 0.0));
