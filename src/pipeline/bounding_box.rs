@@ -10,7 +10,7 @@ pub struct BoundingBox {
 }
 
 impl BoundingBox {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             min: Vec3A::splat(f32::INFINITY),
             max: Vec3A::splat(f32::NEG_INFINITY),
