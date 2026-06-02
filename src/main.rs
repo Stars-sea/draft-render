@@ -1,10 +1,11 @@
 mod color;
+mod geometry;
 mod pipeline;
 mod pmx;
 mod scene;
 
 use crate::color::Color;
-use crate::pipeline::{render_loop, Rasterizer, RenderJob, RenderResult};
+use crate::pipeline::{Accumulator, TraceScene};
 use crate::scene::{
     Camera, DirectionalLight, Material, MeshBuilder, PointLight, Scene, SceneObject, SubMesh,
     Texture, Transform,
@@ -14,18 +15,19 @@ use anyhow::Result;
 use glam::{Quat, Vec3A};
 use minifb::{Key, Window, WindowOptions};
 use std::env;
-use std::sync::{mpsc, Arc};
-use std::thread;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn main() -> Result<()> {
-    let (width, height) = (1920, 1080);
+    let (width, height) = (800, 600);
 
     let args: Vec<String> = env::args().collect();
     let pmx_path = args.get(1).filter(|p| p.ends_with(".pmx"));
 
-    let mut scene = Scene::new(Camera::default());
+    let camera = Camera::default();
+    let mut scene = Scene::new(camera);
     scene.add_light(directional_light());
+    scene.add_light(fill_light());
     scene.add_light(point_light());
 
     if let Some(path) = pmx_path {
@@ -42,13 +44,10 @@ fn main() -> Result<()> {
         scene.add_object(textured_quad());
     }
 
-    let (job_tx, job_rx) = mpsc::sync_channel::<RenderJob>(1);
-    let (result_tx, result_rx) = mpsc::sync_channel::<RenderResult>(1);
-
-    thread::spawn(move || render_loop(Rasterizer::<4>::MSAA_4X, job_rx, result_tx));
-
-    let mut window = Window::new("cube", width, height, WindowOptions::default())?;
+    let mut acc = Accumulator::new(width, height);
+    let mut window = Window::new("path tracing", width, height, WindowOptions::default())?;
     let start = Instant::now();
+    let mut last_frame = Instant::now();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let angle = start.elapsed().as_secs_f32() * 0.8;
@@ -56,15 +55,18 @@ fn main() -> Result<()> {
             .transform
             .set_rotation(Quat::from_axis_angle(Vec3A::Y.into(), angle));
 
-        let job = RenderJob::from_scene(&scene, width, height);
-        if job_tx.send(job).is_err() {
-            break;
-        }
-        if let Ok(RenderResult::FrameReady(data)) = result_rx.recv() {
-            window.update_with_buffer(&data, width, height)?;
-        } else {
-            break;
-        }
+        let ts = TraceScene::from_scene(&scene, width, height);
+        acc.reset();
+        acc.accumulate(&ts, &scene.camera);
+
+        let elapsed = last_frame.elapsed().as_secs_f32();
+        let fps = 1.0 / elapsed.max(0.001);
+        last_frame = Instant::now();
+
+        let image = acc.as_image();
+        let data: Vec<u32> = image.iter().map(|c| c.to_u32()).collect();
+        window.update_with_buffer(&data, width, height)?;
+        window.set_title(&format!("path tracing — 1 spp  {fps:.0} fps"));
     }
 
     Ok(())
@@ -72,9 +74,17 @@ fn main() -> Result<()> {
 
 fn directional_light() -> Arc<DirectionalLight> {
     Arc::new(DirectionalLight::new(
-        Vec3A::new(0.0, 0.0, -1.0),
+        Vec3A::new(-0.5, -0.2, -1.0),
         Color::WHITE,
         1.0,
+    ))
+}
+
+fn fill_light() -> Arc<DirectionalLight> {
+    Arc::new(DirectionalLight::new(
+        Vec3A::new(0.4, 0.6, -0.5),
+        Color::WHITE,
+        0.3,
     ))
 }
 

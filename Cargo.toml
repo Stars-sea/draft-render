@@ -11,9 +11,11 @@ opt-level = 2
 
 [dependencies]
 anyhow = "1.0.102"
+fastrand = "2.4.1"
 glam = "0.33.0"
 image = "0.25"
 minifb = "0.28.0"
+rayon = "1.12"
 
 [profile.release]
 opt-level = 3
