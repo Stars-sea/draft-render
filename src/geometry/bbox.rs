@@ -1,7 +1,5 @@
-use crate::pipeline::geometry::Ray;
+use crate::geometry::ray::Ray;
 use glam::Vec3A;
-
-// ---- BoundingBox ----
 
 #[derive(Clone, Copy)]
 pub struct BoundingBox {
@@ -17,6 +15,7 @@ impl BoundingBox {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_points(points: &[Vec3A]) -> Self {
         let mut bbox = Self::empty();
         for &p in points {
@@ -26,6 +25,7 @@ impl BoundingBox {
         bbox
     }
 
+    #[allow(dead_code)]
     pub fn extend(&mut self, p: Vec3A) {
         self.min = self.min.min(p);
         self.max = self.max.max(p);
@@ -38,31 +38,21 @@ impl BoundingBox {
         }
     }
 
-    pub fn center(&self) -> Vec3A {
-        (self.min + self.max) * 0.5
-    }
-
     pub fn extents(&self) -> Vec3A {
         self.max - self.min
     }
 
-    /// Surface area (used by SAH).
     pub fn surface_area(&self) -> f32 {
         let e = self.extents();
         2.0 * (e.x * e.y + e.y * e.z + e.z * e.x)
     }
 
-    /// Ray-AABB slab test. Returns `(t_near, t_far)` of the intersection interval
-    /// if the ray hits, or `None` if it misses.
     pub fn intersect_range(&self, ray: &Ray) -> Option<(f32, f32)> {
         let t0 = (self.min - ray.origin) * ray.inv_direction;
         let t1 = (self.max - ray.origin) * ray.inv_direction;
         let near = t0.min(t1);
         let far = t0.max(t1);
 
-        // Replace NaN (0*∞ when ray is parallel to an axis and the origin
-        // lands exactly on the AABB boundary on that axis) with the correct
-        // slab contribution: -∞ for near, +∞ for far.
         let nan = near.is_nan_mask();
         let near = Vec3A::select(nan, Vec3A::splat(f32::NEG_INFINITY), near);
         let far = Vec3A::select(nan, Vec3A::splat(f32::INFINITY), far);
@@ -76,28 +66,25 @@ impl BoundingBox {
         }
     }
 
-    /// Ray-AABB slab test. Returns true if the ray hits within `[t_min, t_max]`.
     pub fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> bool {
         self.intersect_range(ray)
             .is_some_and(|(tn, tf)| tn.max(t_min) <= tf.min(t_max))
     }
 }
 
-// ---- Tests ----
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn bbox_empty() {
+    fn empty() {
         let b = BoundingBox::empty();
         assert!(b.min.x.is_infinite());
         assert!(b.max.x.is_infinite());
     }
 
     #[test]
-    fn bbox_from_points() {
+    fn from_points() {
         let points = [
             Vec3A::new(0.0, 0.0, 0.0),
             Vec3A::new(1.0, 2.0, 3.0),
@@ -109,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn bbox_extend() {
+    fn extend() {
         let mut b = BoundingBox::from_points(&[Vec3A::new(0.0, 0.0, 0.0)]);
         b.extend(Vec3A::new(2.0, -1.0, 0.5));
         assert_eq!(b.min, Vec3A::new(0.0, -1.0, 0.0));
@@ -117,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn bbox_merge() {
+    fn merge() {
         let a = BoundingBox {
             min: Vec3A::new(0.0, 0.0, 0.0),
             max: Vec3A::new(1.0, 1.0, 1.0),
@@ -132,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn bbox_surface_area() {
+    fn surface_area() {
         let b = BoundingBox {
             min: Vec3A::new(0.0, 0.0, 0.0),
             max: Vec3A::new(2.0, 3.0, 4.0),
@@ -141,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn bbox_ray_hit() {
+    fn ray_hit() {
         let b = BoundingBox {
             min: Vec3A::new(0.0, 0.0, 0.0),
             max: Vec3A::new(1.0, 1.0, 1.0),
@@ -151,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn bbox_ray_miss() {
+    fn ray_miss() {
         let b = BoundingBox {
             min: Vec3A::new(0.0, 0.0, 0.0),
             max: Vec3A::new(1.0, 1.0, 1.0),

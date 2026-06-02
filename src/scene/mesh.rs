@@ -7,6 +7,7 @@ pub struct Mesh {
     pub indices: Vec<[usize; 3]>,
     pub uvs: Vec<Vec2>,
     /// Per-vertex normals. Empty means flat shading will be auto-computed.
+    #[allow(dead_code)]
     pub normals: Vec<Vec3A>,
 }
 

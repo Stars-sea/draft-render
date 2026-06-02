@@ -3,7 +3,6 @@ mod light;
 mod material;
 mod mesh;
 mod object;
-mod projection;
 mod transform;
 
 use std::sync::Arc;
@@ -13,7 +12,6 @@ pub use light::{DirectionalLight, Light, PointLight};
 pub use material::{Material, Texture};
 pub use mesh::{Mesh, MeshBuilder, SubMesh};
 pub use object::SceneObject;
-pub use projection::Projection;
 pub use transform::Transform;
 
 pub struct Scene {
