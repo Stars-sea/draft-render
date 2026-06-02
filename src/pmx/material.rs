@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 pub(crate) struct PmxMaterial {
     pub diffuse: [f32; 4],
-    pub specular: [f32; 3],
-    pub shininess: f32,
     pub texture_index: Option<usize>,
     pub num_face_vertices: i32,
     pub no_cull: bool,
@@ -46,11 +44,18 @@ fn f32_to_u8(v: f32) -> u8 {
 fn load_texture(pmx_dir: &Path, tex_path: &str) -> Option<Texture> {
     let path = pmx_dir.join(tex_path);
     let img = image::open(&path).ok()?.to_rgba8();
-    let data = img
-        .pixels()
-        .map(|p| Color::argb(p[3], p[0], p[1], p[2]))
-        .collect();
-    Some(Texture::new(img.width() as usize, img.height() as usize, data))
+    let mut data = Vec::with_capacity(img.len());
+    let mut alpha = Vec::with_capacity(img.len());
+    for p in img.pixels() {
+        data.push(Color::rgb(p[0], p[1], p[2]));
+        alpha.push(p[3] as f32 / 255.0);
+    }
+    Some(Texture::new(
+        img.width() as usize,
+        img.height() as usize,
+        data,
+        alpha,
+    ))
 }
 
 pub(crate) fn read_materials(r: &mut Reader) -> Result<Vec<PmxMaterial>> {
@@ -60,8 +65,8 @@ pub(crate) fn read_materials(r: &mut Reader) -> Result<Vec<PmxMaterial>> {
         let _name = r.read_string()?;
         let _name_en = r.read_string()?;
         let diffuse = [r.read_f32()?, r.read_f32()?, r.read_f32()?, r.read_f32()?];
-        let specular = [r.read_f32()?, r.read_f32()?, r.read_f32()?];
-        let shininess = r.read_f32()?;
+        let _specular = [r.read_f32()?, r.read_f32()?, r.read_f32()?];
+        let _shininess = r.read_f32()?;
         let _ambient = [r.read_f32()?, r.read_f32()?, r.read_f32()?];
         let flags = r.read_u8()?;
         let _edge_color = [r.read_f32()?, r.read_f32()?, r.read_f32()?, r.read_f32()?];
@@ -79,8 +84,6 @@ pub(crate) fn read_materials(r: &mut Reader) -> Result<Vec<PmxMaterial>> {
         let num_face_vertices = r.read_i32()?;
         mats.push(PmxMaterial {
             diffuse,
-            specular,
-            shininess,
             texture_index,
             num_face_vertices,
             no_cull: flags & 0x01 != 0,
