@@ -97,8 +97,19 @@ impl SceneBuilder {
         width: usize,
         height: usize,
     ) -> TraceScene {
+        let cull_backface: Vec<bool> = self
+            .material_ids
+            .iter()
+            .map(|&id| !self.materials[id as usize].double_sided)
+            .collect();
         TraceScene {
-            bvh: Bvh::build(self.triangles, self.material_ids, self.tri_uvs, self.tri_normals),
+            bvh: Bvh::build(
+                self.triangles,
+                self.material_ids,
+                self.tri_uvs,
+                self.tri_normals,
+                cull_backface,
+            ),
             materials: self.materials,
             lights,
             width,

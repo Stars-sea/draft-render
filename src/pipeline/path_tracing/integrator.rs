@@ -16,6 +16,7 @@ const RR_START: u32 = 3;
 struct ShadingPoint {
     point: Vec3A,
     normal: Vec3A,
+    geom_normal: Vec3A,
     albedo: Color,
     emission: Color,
     roughness: f32,
@@ -92,7 +93,12 @@ impl TraceScene {
             prev_point = sp.point;
 
             throughput *= sp.eval_bsdf(wo, s.wi) * (cos_theta / s.pdf);
-            ray = Ray::new(sp.point + s.wi * RAY_EPS, s.wi);
+            let offset = if sp.geom_normal.dot(s.wi) > 0.0 {
+                sp.geom_normal * RAY_EPS
+            } else {
+                -sp.geom_normal * RAY_EPS
+            };
+            ray = Ray::new(sp.point + offset, s.wi);
         }
 
         radiance
@@ -110,13 +116,16 @@ impl TraceScene {
         } else {
             self.bvh.triangles[hit.tri_idx].normal()
         };
+        let mut geom_normal = self.bvh.triangles[hit.tri_idx].normal();
         if normal.dot(-ray.direction) < 0.0 {
             normal = -normal;
+            geom_normal = -geom_normal;
         }
 
         ShadingPoint {
             point,
             normal,
+            geom_normal,
             albedo,
             emission: mat.emission,
             roughness: mat.roughness,
@@ -135,7 +144,7 @@ impl TraceScene {
             if cos_theta <= 0.0 {
                 continue;
             }
-            if self.shadowed(sp.point, ls.wi, ls.dist) {
+            if self.shadowed(sp.point, sp.geom_normal, ls.wi, ls.dist) {
                 continue;
             }
 
@@ -151,8 +160,13 @@ impl TraceScene {
     }
 
     #[inline]
-    fn shadowed(&self, point: Vec3A, dir: Vec3A, t_max: f32) -> bool {
-        let ray = Ray::new(point + dir * RAY_EPS, dir);
+    fn shadowed(&self, point: Vec3A, normal: Vec3A, dir: Vec3A, t_max: f32) -> bool {
+        let offset = if normal.dot(dir) > 0.0 {
+            normal * RAY_EPS
+        } else {
+            -normal * RAY_EPS
+        };
+        let ray = Ray::new(point + offset, dir);
         self.bvh.intersect_any(&ray, RAY_EPS, t_max - RAY_EPS)
     }
 

@@ -17,6 +17,7 @@ pub(super) struct BvhBuilder<'a> {
     pub(super) material_ids: &'a mut [u32],
     pub(super) uvs: &'a mut [[Vec2; 3]],
     pub(super) normals: &'a mut [[Vec3A; 3]],
+    pub(super) cull_backface: &'a mut [bool],
 }
 
 impl<'a> BvhBuilder<'a> {
@@ -62,10 +63,12 @@ impl<'a> BvhBuilder<'a> {
             let tmp_ids: Vec<_> = indices.iter().map(|&i| self.material_ids[start + i]).collect();
             let tmp_uvs: Vec<_> = indices.iter().map(|&i| self.uvs[start + i]).collect();
             let tmp_normals: Vec<_> = indices.iter().map(|&i| self.normals[start + i]).collect();
+            let tmp_cull: Vec<_> = indices.iter().map(|&i| self.cull_backface[start + i]).collect();
             self.triangles[start..end].copy_from_slice(&tmp_tris);
             self.material_ids[start..end].copy_from_slice(&tmp_ids);
             self.uvs[start..end].copy_from_slice(&tmp_uvs);
             self.normals[start..end].copy_from_slice(&tmp_normals);
+            self.cull_backface[start..end].copy_from_slice(&tmp_cull);
         }
 
         let left = self.build_range(start, mid, depth + 1);

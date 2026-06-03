@@ -44,6 +44,7 @@ pub struct Bvh {
     pub material_ids: Vec<u32>,
     pub uvs: Vec<[Vec2; 3]>,
     pub normals: Vec<[Vec3A; 3]>,
+    pub cull_backface: Vec<bool>,
 }
 
 impl Bvh {
@@ -52,10 +53,12 @@ impl Bvh {
         mut material_ids: Vec<u32>,
         mut uvs: Vec<[Vec2; 3]>,
         mut normals: Vec<[Vec3A; 3]>,
+        mut cull_backface: Vec<bool>,
     ) -> Self {
         assert_eq!(triangles.len(), material_ids.len());
         assert_eq!(triangles.len(), uvs.len());
         assert_eq!(triangles.len(), normals.len());
+        assert_eq!(triangles.len(), cull_backface.len());
         let len = triangles.len();
         let mut nodes = Vec::with_capacity(len * 2);
         let root = BvhBuilder {
@@ -64,6 +67,7 @@ impl Bvh {
             material_ids: &mut material_ids,
             uvs: &mut uvs,
             normals: &mut normals,
+            cull_backface: &mut cull_backface,
         }
         .build();
         nodes.shrink_to_fit();
@@ -74,6 +78,7 @@ impl Bvh {
             material_ids,
             uvs,
             normals,
+            cull_backface,
         }
     }
 
@@ -82,6 +87,7 @@ impl Bvh {
         ClosestHitVisitor {
             t_closest: t_max,
             best: None,
+            cull_backface: &self.cull_backface,
         }
         .traverse(ray, &self.triangles, &self.nodes, self.root, t_min)
         .map(|(tri_idx, t, u, v)| Hit { tri_idx, t, u, v })
@@ -92,6 +98,7 @@ impl Bvh {
         AnyHitVisitor {
             found: false,
             t_max,
+            cull_backface: &self.cull_backface,
         }
         .traverse(ray, &self.triangles, &self.nodes, self.root, t_min)
     }
@@ -104,7 +111,7 @@ mod tests {
 
     #[test]
     fn build_empty() {
-        let bvh = Bvh::build(vec![], vec![], vec![], vec![]);
+        let bvh = Bvh::build(vec![], vec![], vec![], vec![], vec![]);
         assert!(
             bvh.intersect(&Ray::new(Vec3A::ZERO, Vec3A::Z), 0.0, 100.0)
                 .is_none()
@@ -118,7 +125,13 @@ mod tests {
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
         );
-        let bvh = Bvh::build(vec![tri], vec![0], vec![[Vec2::ZERO; 3]], vec![[Vec3A::ZERO; 3]]);
+        let bvh = Bvh::build(
+            vec![tri],
+            vec![0],
+            vec![[Vec2::ZERO; 3]],
+            vec![[Vec3A::ZERO; 3]],
+            vec![false],
+        );
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         let hit = bvh.intersect(&ray, 0.0, 100.0);
         assert!(hit.is_some());
@@ -132,7 +145,13 @@ mod tests {
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
         );
-        let bvh = Bvh::build(vec![tri], vec![0], vec![[Vec2::ZERO; 3]], vec![[Vec3A::ZERO; 3]]);
+        let bvh = Bvh::build(
+            vec![tri],
+            vec![0],
+            vec![[Vec2::ZERO; 3]],
+            vec![[Vec3A::ZERO; 3]],
+            vec![false],
+        );
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         assert!(bvh.intersect_any(&ray, 0.0, 100.0));
         let miss = Ray::new(Vec3A::new(2.0, 2.0, 0.0), Vec3A::new(0.0, 0.0, 1.0));
@@ -159,7 +178,8 @@ mod tests {
             }
         }
         let normals = vec![[Vec3A::ZERO; 3]; 25];
-        let bvh = Bvh::build(tris, ids, uvs, normals);
+        let cull = vec![false; 25];
+        let bvh = Bvh::build(tris, ids, uvs, normals, cull);
         let ray = Ray::new(Vec3A::new(2.2, 3.2, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         let hit = bvh.intersect(&ray, 0.0, 100.0);
         assert!(hit.is_some());

@@ -120,12 +120,13 @@ pub(super) trait Visitor: Sized {
     }
 }
 
-pub(super) struct ClosestHitVisitor {
+pub(super) struct ClosestHitVisitor<'a> {
     pub(super) t_closest: f32,
     pub(super) best: Option<(usize, f32, f32, f32)>,
+    pub(super) cull_backface: &'a [bool],
 }
 
-impl Visitor for ClosestHitVisitor {
+impl<'a> Visitor for ClosestHitVisitor<'a> {
     type Output = Option<(usize, f32, f32, f32)>;
 
     fn t_bound(&self) -> f32 {
@@ -144,6 +145,12 @@ impl Visitor for ClosestHitVisitor {
             if let Some((t, u, v)) = intersect(ray, tri)
                 && (t_min..self.t_closest).contains(&t)
             {
+                if self.cull_backface[start + i] {
+                    let n = tri.normal();
+                    if n.dot(-ray.direction) < 0.0 {
+                        continue;
+                    }
+                }
                 self.t_closest = t;
                 self.best = Some((start + i, t, u, v));
             }
@@ -156,12 +163,13 @@ impl Visitor for ClosestHitVisitor {
     }
 }
 
-pub(super) struct AnyHitVisitor {
+pub(super) struct AnyHitVisitor<'a> {
     pub(super) found: bool,
     pub(super) t_max: f32,
+    pub(super) cull_backface: &'a [bool],
 }
 
-impl Visitor for AnyHitVisitor {
+impl<'a> Visitor for AnyHitVisitor<'a> {
     type Output = bool;
 
     fn t_bound(&self) -> f32 {
@@ -176,10 +184,16 @@ impl Visitor for AnyHitVisitor {
         n: usize,
         t_min: f32,
     ) -> bool {
-        for tri in &tris[start..(start + n)] {
+        for (i, tri) in tris[start..(start + n)].iter().enumerate() {
             if let Some((t, _, _)) = intersect(ray, tri)
                 && (t_min..self.t_max).contains(&t)
             {
+                if self.cull_backface[start + i] {
+                    let n = tri.normal();
+                    if n.dot(-ray.direction) < 0.0 {
+                        continue;
+                    }
+                }
                 self.found = true;
                 return false;
             }
