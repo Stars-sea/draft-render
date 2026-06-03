@@ -1,9 +1,13 @@
 use glam::Vec3A;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
+use zerocopy::{self, FromBytes, Immutable, IntoBytes, KnownLayout};
 
-/// Linear-RGB colour backed by `Vec3A`.  HDR values (components > 1.0) are
-/// supported; they are tone-mapped only when converting to display-ready u32.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Linear-RGB color backed by  Vec3A`.  HDR values (components > 1.0) are
+/// supported; they are tone-mpped only when converting to display-ready u32.
+///
+/// Implements zerocopy traits — `&[Color]` ↔ `&[u8]` without copying.
+#[derive(Debug, Clone, Copy, PartialEq, FromBytes, Immutable, IntoBytes, KnownLayout)]
+#[repr(transparent)]
 pub struct Color(pub Vec3A);
 
 impl Color {

@@ -1,4 +1,4 @@
-use glam::{Mat4, Quat, Vec3, Vec3A};
+use glam::{Mat3, Mat4, Quat, Vec3, Vec3A};
 
 pub struct Transform {
     translation: Vec3A,
@@ -61,6 +61,14 @@ impl Transform {
         let mr = Mat4::from_quat(self.rotation);
         let ms = Mat4::from_scale(Vec3::from(self.scale));
         mt * mr * ms
+    }
+
+    /// Inverse-transpose of the upper-left 3×3, for transforming normals
+    /// correctly under non-uniform scaling.
+    pub fn normal_matrix(&self) -> Mat3 {
+        let r = Mat3::from_quat(self.rotation);
+        let s_inv = Mat3::from_diagonal(1.0 / Vec3::from(self.scale));
+        r * s_inv
     }
 }
 

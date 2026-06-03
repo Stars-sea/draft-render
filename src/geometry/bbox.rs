@@ -1,7 +1,7 @@
 use crate::geometry::ray::Ray;
 use glam::Vec3A;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BoundingBox {
     pub min: Vec3A,
     pub max: Vec3A,
@@ -53,6 +53,8 @@ impl BoundingBox {
         let near = t0.min(t1);
         let far = t0.max(t1);
 
+        // When inv_direction is infinite (ray parallel to axis), min/max ops
+        // produce NaN. Replace NaN with ±∞ so the [t_near, t_far] check passes.
         let nan = near.is_nan_mask();
         let near = Vec3A::select(nan, Vec3A::splat(f32::NEG_INFINITY), near);
         let far = Vec3A::select(nan, Vec3A::splat(f32::INFINITY), far);

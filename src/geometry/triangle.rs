@@ -2,19 +2,28 @@ use crate::geometry::bbox::BoundingBox;
 use crate::geometry::ray::Ray;
 use glam::Vec3A;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Triangle {
     pub v0: Vec3A,
     pub e1: Vec3A,
     pub e2: Vec3A,
+    pub face_normal: Vec3A,
 }
 
 impl Triangle {
     pub fn new(v0: Vec3A, v1: Vec3A, v2: Vec3A) -> Self {
+        let e1 = v1 - v0;
+        let e2 = v2 - v0;
+        let n = e1.cross(e2);
         Self {
             v0,
-            e1: v1 - v0,
-            e2: v2 - v0,
+            e1,
+            e2,
+            face_normal: if n.length_squared() > 0.0 {
+                n.normalize()
+            } else {
+                Vec3A::Z
+            },
         }
     }
 
@@ -31,17 +40,11 @@ impl Triangle {
     }
 
     pub fn normal(&self) -> Vec3A {
-        let n = self.e1.cross(self.e2);
-        if n.length_squared() > 0.0 {
-            n.normalize()
-        } else {
-            Vec3A::Z
-        }
+        self.face_normal
     }
 
-    /// True when the ray hits the back face (normal points opposite to ray).
     pub fn is_backface_to(&self, ray_dir: Vec3A) -> bool {
-        self.normal().dot(-ray_dir) < 0.0
+        self.face_normal.dot(ray_dir) > 0.0
     }
 
     pub fn bounding_box(&self) -> BoundingBox {
@@ -50,6 +53,12 @@ impl Triangle {
             min: self.v0.min(v1).min(v2),
             max: self.v0.max(v1).max(v2),
         }
+    }
+}
+
+impl From<[Vec3A; 3]> for Triangle {
+    fn from(v0: [Vec3A; 3]) -> Self {
+        Self::new(v0[0], v0[1], v0[2])
     }
 }
 
