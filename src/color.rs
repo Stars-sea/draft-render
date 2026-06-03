@@ -36,9 +36,9 @@ impl Color {
         self.0.z
     }
 
-    /// Reinhard tone-map + sRGB gamma → ARGB `u32` for the framebuffer.
+    /// ACES filmic tone-map + sRGB gamma → ARGB `u32` for the framebuffer.
     pub fn to_u32(self) -> u32 {
-        let mapped = self.0 / (self.0 + Vec3A::ONE);
+        let mapped = aces_tonemap(self.0);
         let gamma = mapped.powf(1.0 / 2.2);
         let c = (gamma.clamp(Vec3A::ZERO, Vec3A::ONE) * 255.0).round();
         0xFF00_0000 | ((c.x as u32) << 16) | ((c.y as u32) << 8) | (c.z as u32)
@@ -92,4 +92,14 @@ impl MulAssign<Color> for Color {
     fn mul_assign(&mut self, rhs: Color) {
         self.0 *= rhs.0;
     }
+}
+
+/// ACES filmic tone-mapping (Narkowicz 2015 fit).
+fn aces_tonemap(x: Vec3A) -> Vec3A {
+    let a = Vec3A::splat(2.51);
+    let b = Vec3A::splat(0.03);
+    let c = Vec3A::splat(2.43);
+    let d = Vec3A::splat(0.59);
+    let e = Vec3A::splat(0.14);
+    (x * (a * x + b)) / (x * (c * x + d) + e)
 }

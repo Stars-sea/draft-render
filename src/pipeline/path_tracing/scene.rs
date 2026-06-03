@@ -8,7 +8,7 @@ use std::sync::Arc;
 pub struct TraceScene {
     pub(crate) bvh: Bvh,
     pub(crate) materials: Vec<Material>,
-    pub(crate) lights: Vec<Arc<dyn Light + Send + Sync>>,
+    pub(crate) lights: Vec<Arc<dyn Light>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
 }
@@ -81,7 +81,7 @@ impl SceneBuilder {
 
     fn build(
         self,
-        lights: Vec<Arc<dyn Light + Send + Sync>>,
+        lights: Vec<Arc<dyn Light>>,
         width: usize,
         height: usize,
     ) -> TraceScene {

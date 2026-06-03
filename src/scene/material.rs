@@ -94,6 +94,8 @@ pub struct Material {
     pub emission: Color,
     pub double_sided: bool,
     pub texture: Option<Arc<Texture>>,
+    pub roughness: f32,
+    pub metallic: f32,
 }
 
 impl Material {
@@ -103,6 +105,8 @@ impl Material {
             emission: Color::BLACK,
             double_sided: false,
             texture: None,
+            roughness: 1.0,
+            metallic: 0.0,
         }
     }
 
@@ -112,7 +116,19 @@ impl Material {
             emission: Color::BLACK,
             double_sided: false,
             texture: Some(texture),
+            roughness: 1.0,
+            metallic: 0.0,
         }
+    }
+
+    pub fn with_roughness(mut self, r: f32) -> Self {
+        self.roughness = r;
+        self
+    }
+
+    pub fn with_metallic(mut self, m: f32) -> Self {
+        self.metallic = m;
+        self
     }
 
     pub fn with_double_sided(mut self) -> Self {

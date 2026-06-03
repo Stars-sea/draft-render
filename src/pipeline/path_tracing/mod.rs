@@ -1,4 +1,5 @@
 mod accumulator;
+mod bsdf;
 mod integrator;
 mod sampling;
 mod scene;
@@ -23,7 +24,7 @@ mod tests {
         scene.add_light(Arc::new(PointLight::new(
             Vec3A::new(0.0, 2.0, 0.0),
             Color::WHITE,
-            10.0,
+            31.4,
         )));
 
         let mesh = MeshBuilder::new()

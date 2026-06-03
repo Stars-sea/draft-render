@@ -26,8 +26,7 @@ fn main() -> Result<()> {
 
     let camera = Camera::default();
     let mut scene = Scene::new(camera);
-    scene.add_light(directional_light());
-    scene.add_light(fill_light());
+    scene.add_light(key_light());
     scene.add_light(point_light());
 
     if let Some(path) = pmx_path {
@@ -46,14 +45,16 @@ fn main() -> Result<()> {
 
     let mut acc = Accumulator::new(width, height);
     let mut window = Window::new("path tracing", width, height, WindowOptions::default())?;
-    let start = Instant::now();
+    let first_frame = Instant::now();
     let mut last_frame = Instant::now();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let angle = start.elapsed().as_secs_f32() * 0.8;
         scene.objects[0]
             .transform
-            .set_rotation(Quat::from_axis_angle(Vec3A::Y.into(), angle));
+            .set_rotation(Quat::from_axis_angle(
+                Vec3A::Y.into(),
+                first_frame.elapsed().as_secs_f32() * 0.8,
+            ));
 
         let ts = TraceScene::from_scene(&scene, width, height);
         acc.reset();
@@ -66,25 +67,18 @@ fn main() -> Result<()> {
         let image = acc.as_image();
         let data: Vec<u32> = image.iter().map(|c| c.to_u32()).collect();
         window.update_with_buffer(&data, width, height)?;
-        window.set_title(&format!("path tracing — 1 spp  {fps:.0} fps"));
+        let spp = acc.sample_count();
+        window.set_title(&format!("path tracing — {spp} spp  {fps:.0} fps"));
     }
 
     Ok(())
 }
 
-fn directional_light() -> Arc<DirectionalLight> {
+fn key_light() -> Arc<DirectionalLight> {
     Arc::new(DirectionalLight::new(
-        Vec3A::new(-0.5, -0.2, -1.0),
+        Vec3A::new(-0.4, -0.7, -0.8),
         Color::WHITE,
-        1.0,
-    ))
-}
-
-fn fill_light() -> Arc<DirectionalLight> {
-    Arc::new(DirectionalLight::new(
-        Vec3A::new(0.4, 0.6, -0.5),
-        Color::WHITE,
-        0.3,
+        1.6,
     ))
 }
 
@@ -92,7 +86,7 @@ fn point_light() -> Arc<PointLight> {
     Arc::new(PointLight::new(
         Vec3A::new(2.0, 3.0, 3.5),
         Color::WHITE,
-        8.0,
+        25.0,
     ))
 }
 
@@ -123,7 +117,7 @@ fn cube() -> SceneObject {
     SceneObject::single(
         SubMesh::new(
             Arc::new(builder.build()),
-            Material::solid(Color::rgb(200, 120, 60)),
+            Material::solid(Color::rgb(200, 120, 60)).with_roughness(0.4),
         ),
         Transform::default().with_translation(Vec3A::new(0.0, 0.0, 3.0)),
     )

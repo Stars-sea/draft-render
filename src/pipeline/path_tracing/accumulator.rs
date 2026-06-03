@@ -53,6 +53,10 @@ impl Accumulator {
             .collect()
     }
 
+    pub fn sample_count(&self) -> u32 {
+        self.count[0]
+    }
+
     pub fn reset(&mut self) {
         self.data.fill(Color::BLACK);
         self.count.fill(0);

@@ -1,9 +1,11 @@
 use crate::color::Color;
 use crate::geometry::Ray;
 use crate::pipeline::bvh::Hit;
-use crate::pipeline::path_tracing::sampling::{cosine_sample_hemisphere, stratify_jitter};
+use crate::pipeline::path_tracing::bsdf;
+use crate::pipeline::path_tracing::sampling::{power_heuristic, stratify_jitter};
 use crate::pipeline::path_tracing::scene::TraceScene;
 use crate::scene::Camera;
+
 use fastrand::Rng;
 use glam::Vec3A;
 
@@ -15,6 +17,9 @@ struct ShadingPoint {
     point: Vec3A,
     normal: Vec3A,
     albedo: Color,
+    emission: Color,
+    roughness: f32,
+    metallic: f32,
 }
 
 impl TraceScene {
@@ -29,26 +34,47 @@ impl TraceScene {
         let mut radiance = Color::BLACK;
         let mut throughput = Color::WHITE;
         let mut rng = Rng::with_seed(seed);
+        let mut prev_bsdf_pdf = 1.0;
+        let mut prev_point = Vec3A::ZERO;
 
         for depth in 0..MAX_DEPTH {
             let Some(hit) = self.bvh.intersect(&ray, RAY_EPS, f32::INFINITY) else {
-                if radiance.0 == Vec3A::ZERO {
+                if depth == 0 {
                     radiance = sky_color(ray.direction);
                 }
                 break;
             };
 
             let sp = self.resolve_hit(&hit, &ray);
-            radiance += throughput * (sp.albedo * 0.03);
-            radiance += throughput * self.direct_light(&sp);
+
+            if sp.emission.0.max_element() > 0.0 {
+                if depth == 0 {
+                    radiance += throughput * sp.emission;
+                } else {
+                    let light_pdf = self.pdf_lights(prev_point, ray.direction);
+                    radiance +=
+                        throughput * sp.emission * power_heuristic(prev_bsdf_pdf, light_pdf);
+                }
+                break;
+            }
+
+            let wo = -ray.direction;
+            radiance += throughput * self.direct_light(&sp, wo, &mut rng);
 
             if self.russian_roulette(depth, &mut throughput, &mut rng) {
                 break;
             }
 
-            let wi = cosine_sample_hemisphere(sp.normal, &mut rng);
-            throughput *= sp.albedo;
-            ray = Ray::new(sp.point + wi * RAY_EPS, wi);
+            let sample = bsdf::sample(wo, sp.normal, sp.roughness, sp.metallic, &mut rng);
+            let cos_theta = sp.normal.dot(sample.wi).max(0.0);
+            let value = bsdf::evaluate(
+                wo, sample.wi, sp.normal, sp.albedo, sp.roughness, sp.metallic,
+            );
+            prev_bsdf_pdf = bsdf::pdf(wo, sample.wi, sp.normal, sp.roughness, sp.metallic);
+            prev_point = sp.point;
+
+            throughput *= value * (cos_theta / sample.pdf);
+            ray = Ray::new(sp.point + sample.wi * RAY_EPS, sample.wi);
         }
 
         radiance
@@ -59,7 +85,7 @@ impl TraceScene {
         let point = hit.point(ray);
         let uv = hit.interpolate_uv(&self.bvh.uvs);
         let mat = &self.materials[self.bvh.material_ids[hit.tri_idx] as usize];
-        let (albedo, _alpha) = mat.albedo_alpha_at(uv);
+        let (albedo, _) = mat.albedo_alpha_at(uv);
 
         let tri = &self.bvh.triangles[hit.tri_idx];
         let mut normal = tri.normal();
@@ -72,27 +98,51 @@ impl TraceScene {
             point,
             normal,
             albedo,
+            emission: mat.emission,
+            roughness: mat.roughness,
+            metallic: mat.metallic,
         }
     }
 
     #[inline]
-    fn direct_light(&self, sp: &ShadingPoint) -> Color {
+    fn direct_light(&self, sp: &ShadingPoint, wo: Vec3A, rng: &mut Rng) -> Color {
         let mut contrib = Color::BLACK;
         for light in &self.lights {
-            let dir = light.direction(sp.point);
-            let n_dot_l = sp.normal.dot(dir);
-            if n_dot_l <= 0.0 {
+            let Some(ls) = light.sample(sp.point, rng) else {
+                continue;
+            };
+            let cos_theta = sp.normal.dot(ls.wi);
+            if cos_theta <= 0.0 {
                 continue;
             }
-            let dist = light.distance(sp.point);
-            let shadow_ray = Ray::new(sp.point + dir * RAY_EPS, dir);
-            if self.bvh.intersect_any(&shadow_ray, RAY_EPS, dist - RAY_EPS) {
+            if self.shadowed(sp.point, ls.wi, ls.dist) {
                 continue;
             }
-            let li = light.color() * (light.intensity() * light.attenuation(sp.point));
-            contrib += sp.albedo * li * n_dot_l;
+
+            let bsdf_val = bsdf::evaluate(
+                wo, ls.wi, sp.normal, sp.albedo, sp.roughness, sp.metallic,
+            );
+            let mis_w = if light.is_delta() {
+                1.0
+            } else {
+                let bsdf_pdf =
+                    bsdf::pdf(wo, ls.wi, sp.normal, sp.roughness, sp.metallic);
+                power_heuristic(ls.pdf, bsdf_pdf)
+            };
+            contrib += bsdf_val * ls.radiance * (cos_theta * mis_w / ls.pdf);
         }
         contrib
+    }
+
+    #[inline]
+    fn shadowed(&self, point: Vec3A, dir: Vec3A, t_max: f32) -> bool {
+        let ray = Ray::new(point + dir * RAY_EPS, dir);
+        self.bvh.intersect_any(&ray, RAY_EPS, t_max - RAY_EPS)
+    }
+
+    #[inline]
+    fn pdf_lights(&self, point: Vec3A, wi: Vec3A) -> f32 {
+        self.lights.iter().map(|light| light.pdf(point, wi)).sum()
     }
 
     #[inline]
