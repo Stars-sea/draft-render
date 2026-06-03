@@ -105,10 +105,12 @@ impl TraceScene {
         let mat = &self.materials[self.bvh.material_ids[hit.tri_idx] as usize];
         let (albedo, _) = mat.albedo_alpha_at(uv);
 
-        let tri = &self.bvh.triangles[hit.tri_idx];
-        let mut normal = tri.normal();
-        let wo = -ray.direction;
-        if normal.dot(wo) < 0.0 {
+        let mut normal = if self.bvh.normals[hit.tri_idx][0] != Vec3A::ZERO {
+            hit.interpolate_normal(&self.bvh.normals)
+        } else {
+            self.bvh.triangles[hit.tri_idx].normal()
+        };
+        if normal.dot(-ray.direction) < 0.0 {
             normal = -normal;
         }
 

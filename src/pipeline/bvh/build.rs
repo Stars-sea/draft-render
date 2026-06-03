@@ -2,7 +2,7 @@ use crate::geometry::{BoundingBox, Triangle};
 use crate::pipeline::bvh::node::BvhNode;
 use crate::pipeline::bvh::visit::NULL_NODE;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3A};
 use std::cmp::Ordering;
 
 const LEAF_SIZE: usize = 4;
@@ -16,6 +16,7 @@ pub(super) struct BvhBuilder<'a> {
     pub(super) triangles: &'a mut [Triangle],
     pub(super) material_ids: &'a mut [u32],
     pub(super) uvs: &'a mut [[Vec2; 3]],
+    pub(super) normals: &'a mut [[Vec3A; 3]],
 }
 
 impl<'a> BvhBuilder<'a> {
@@ -58,14 +59,13 @@ impl<'a> BvhBuilder<'a> {
                     .unwrap_or(Ordering::Equal)
             });
             let tmp_tris: Vec<_> = indices.iter().map(|&i| tris[i]).collect();
-            let tmp_ids: Vec<_> = indices
-                .iter()
-                .map(|&i| self.material_ids[start + i])
-                .collect();
+            let tmp_ids: Vec<_> = indices.iter().map(|&i| self.material_ids[start + i]).collect();
             let tmp_uvs: Vec<_> = indices.iter().map(|&i| self.uvs[start + i]).collect();
+            let tmp_normals: Vec<_> = indices.iter().map(|&i| self.normals[start + i]).collect();
             self.triangles[start..end].copy_from_slice(&tmp_tris);
             self.material_ids[start..end].copy_from_slice(&tmp_ids);
             self.uvs[start..end].copy_from_slice(&tmp_uvs);
+            self.normals[start..end].copy_from_slice(&tmp_normals);
         }
 
         let left = self.build_range(start, mid, depth + 1);

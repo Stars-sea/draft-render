@@ -28,6 +28,7 @@ struct SceneBuilder {
     material_ids: Vec<u32>,
     materials: Vec<Material>,
     tri_uvs: Vec<[Vec2; 3]>,
+    tri_normals: Vec<[Vec3A; 3]>,
 }
 
 impl SceneBuilder {
@@ -37,6 +38,7 @@ impl SceneBuilder {
             material_ids: Vec::new(),
             materials: Vec::new(),
             tri_uvs: Vec::new(),
+            tri_normals: Vec::new(),
         }
     }
 
@@ -66,6 +68,7 @@ impl SceneBuilder {
             .map(|&v| model.transform_point3a(v))
             .collect();
         let mesh_uvs = &sub.mesh.uvs;
+        let mesh_normals = &sub.mesh.normals;
         for &[i0, i1, i2] in &sub.mesh.indices {
             self.triangles
                 .push(Triangle::new(verts[i0], verts[i1], verts[i2]));
@@ -76,6 +79,15 @@ impl SceneBuilder {
                 [mesh_uvs[i0], mesh_uvs[i1], mesh_uvs[i2]]
             };
             self.tri_uvs.push(uv);
+            let n = if mesh_normals.is_empty() {
+                [Vec3A::ZERO; 3]
+            } else {
+                let n0 = model.transform_vector3a(mesh_normals[i0]).normalize();
+                let n1 = model.transform_vector3a(mesh_normals[i1]).normalize();
+                let n2 = model.transform_vector3a(mesh_normals[i2]).normalize();
+                [n0, n1, n2]
+            };
+            self.tri_normals.push(n);
         }
     }
 
@@ -86,7 +98,7 @@ impl SceneBuilder {
         height: usize,
     ) -> TraceScene {
         TraceScene {
-            bvh: Bvh::build(self.triangles, self.material_ids, self.tri_uvs),
+            bvh: Bvh::build(self.triangles, self.material_ids, self.tri_uvs, self.tri_normals),
             materials: self.materials,
             lights,
             width,
