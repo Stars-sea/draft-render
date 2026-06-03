@@ -1,9 +1,9 @@
 use crate::color::Color;
-use crate::pipeline::path_tracing::scene::TraceScene;
-use crate::scene::Camera;
+use crate::pipeline::path_tracing::scene::{ObjTransform, TraceScene};
+use crate::scene::{Camera, Scene};
 use rayon::prelude::*;
 
-/// Progressive accumulation buffer: accumulates per-pixel samples across frames.
+/// Progressive accumulation buffer: accumulates per-pixel HDR samples.
 pub struct Accumulator {
     data: Vec<Color>,
     count: Vec<u32>,
@@ -20,18 +20,27 @@ impl Accumulator {
         }
     }
 
-    /// Trace and accumulate one sample per pixel (parallel).
-    pub fn accumulate(&mut self, ts: &TraceScene, camera: &Camera) {
-        let w = self.width;
-        self.data
-            .par_iter_mut()
-            .zip(self.count.par_iter_mut())
-            .enumerate()
-            .for_each(|(i, (d, c))| {
-                let color = ts.trace_pixel(camera, i % w, i / w, *c);
-                *d += color;
-                *c += 1;
+    /// Trace `spp` samples per pixel, accumulating into the HDR buffer.
+    pub fn accumulate(&mut self, ts: &TraceScene, camera: &Camera, scene: &Scene, spp: u32) {
+        let transforms: Vec<ObjTransform> = scene
+            .objects
+            .iter()
+            .map(|obj| ObjTransform {
+                model: obj.transform.transform_matrix(),
+                normal_mat: obj.transform.normal_matrix(),
+            })
+            .collect();
+
+        for si in 0..spp {
+            let w = self.width;
+            self.data.par_iter_mut().enumerate().for_each(|(i, d)| {
+                *d += ts.trace_pixel(camera, &transforms, i % w, i / w, si);
             });
+        }
+
+        for c in &mut self.count {
+            *c += spp;
+        }
     }
 
     /// Current averaged HDR image (linear RGB).

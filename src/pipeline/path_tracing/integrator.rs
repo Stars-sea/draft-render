@@ -3,11 +3,11 @@ use crate::geometry::Ray;
 use crate::pipeline::bvh::Hit;
 use crate::pipeline::path_tracing::bsdf;
 use crate::pipeline::path_tracing::sampling::{power_heuristic, stratify_jitter};
-use crate::pipeline::path_tracing::scene::TraceScene;
+use crate::pipeline::path_tracing::scene::{ObjTransform, TraceScene};
 use crate::scene::Camera;
 
 use fastrand::Rng;
-use glam::Vec3A;
+use glam::{Mat4, Vec3A};
 
 const RAY_EPS: f32 = 1e-3;
 const MAX_DEPTH: u32 = 8;
@@ -44,15 +44,28 @@ impl ShadingPoint {
     }
 }
 
+struct SceneHit {
+    hit: Hit,
+    obj_idx: usize,
+    local_ray: Ray,
+}
+
 impl TraceScene {
-    pub fn trace_pixel(&self, camera: &Camera, x: usize, y: usize, sample_index: u32) -> Color {
-        let jitter = stratify_jitter(sample_index);
-        let ray = camera.primary_ray(x, y, self.width, self.height, jitter);
+    pub(super) fn trace_pixel(
+        &self,
+        camera: &Camera,
+        transforms: &[ObjTransform],
+        x: usize,
+        y: usize,
+        sample_index: u32,
+    ) -> Color {
         let seed = ((y * self.width + x) as u64).wrapping_mul(2654435761) ^ sample_index as u64;
-        self.path_trace(ray, seed)
+        let jitter = stratify_jitter(seed);
+        let ray = camera.primary_ray(x, y, self.width, self.height, jitter);
+        self.path_trace(ray, transforms, seed)
     }
 
-    fn path_trace(&self, mut ray: Ray, seed: u64) -> Color {
+    fn path_trace(&self, mut ray: Ray, transforms: &[ObjTransform], seed: u64) -> Color {
         let mut radiance = Color::BLACK;
         let mut throughput = Color::WHITE;
         let mut rng = Rng::with_seed(seed);
@@ -60,14 +73,14 @@ impl TraceScene {
         let mut prev_point = Vec3A::ZERO;
 
         for depth in 0..MAX_DEPTH {
-            let Some(hit) = self.bvh.intersect(&ray, RAY_EPS, f32::INFINITY) else {
+            let Some(sh) = self.intersect_scene(&ray, RAY_EPS, transforms) else {
                 if depth == 0 {
                     radiance = sky_color(ray.direction);
                 }
                 break;
             };
 
-            let sp = self.resolve_hit(&hit, &ray);
+            let sp = self.resolve_hit(&sh, &ray, transforms);
 
             if sp.emission.max_channel() > 0.0 {
                 if depth == 0 {
@@ -81,7 +94,7 @@ impl TraceScene {
             }
 
             let wo = -ray.direction;
-            radiance += throughput * self.direct_light(&sp, wo, &mut rng);
+            radiance += throughput * self.direct_light(&sp, wo, transforms, &mut rng);
 
             if self.russian_roulette(depth, &mut throughput, &mut rng) {
                 break;
@@ -102,27 +115,77 @@ impl TraceScene {
         radiance
     }
 
-    #[inline]
-    fn resolve_hit(&self, hit: &Hit, ray: &Ray) -> ShadingPoint {
-        let point = hit.point(ray);
-        let uv = hit.interpolate_uv(&self.bvh.uvs);
-        let mat = &self.materials[self.bvh.material_ids[hit.tri_idx] as usize];
+    /// Transform a world-space ray to an object's local space.
+    fn ray_to_local(ray: &Ray, inv_model: &Mat4) -> (Ray, f32) {
+        let origin = inv_model.transform_point3a(ray.origin);
+        let dir_raw = inv_model.transform_vector3a(ray.direction);
+        let s = dir_raw.length();
+        (Ray::new(origin, dir_raw / s), s)
+    }
+
+    /// Find the closest hit across all objects.
+    fn intersect_scene(
+        &self,
+        ray: &Ray,
+        t_min: f32,
+        transforms: &[ObjTransform],
+    ) -> Option<SceneHit> {
+        let mut best: Option<SceneHit> = None;
+        let mut closest_t = f32::INFINITY;
+
+        for (i, obj) in self.objects.iter().enumerate() {
+            let inv = transforms[i].model.inverse();
+            let (local_ray, s) = Self::ray_to_local(ray, &inv);
+            if s < 1e-12 {
+                continue;
+            }
+            let Some(hit) = obj.intersect(&local_ray, t_min, f32::INFINITY) else {
+                continue;
+            };
+            let t = hit.t / s;
+            if t < closest_t {
+                closest_t = t;
+                best = Some(SceneHit { hit, obj_idx: i, local_ray });
+            }
+        }
+
+        best
+    }
+
+    fn resolve_hit(
+        &self,
+        sh: &SceneHit,
+        world_ray: &Ray,
+        transforms: &[ObjTransform],
+    ) -> ShadingPoint {
+        let txf = &transforms[sh.obj_idx];
+        let bvh = &self.objects[sh.obj_idx];
+
+        let local_point = sh.hit.point(&sh.local_ray);
+        let world_point = txf.model.transform_point3a(local_point);
+
+        let uv = sh.hit.interpolate_uv(&bvh.uvs);
+        let mat = &self.materials[bvh.material_ids[sh.hit.tri_idx] as usize];
         let (albedo, _) = mat.albedo_alpha_at(uv);
 
-        let mut normal = if self.bvh.normals[hit.tri_idx][0] != Vec3A::ZERO {
-            hit.interpolate_normal(&self.bvh.normals)
+        let mut shading_normal = if bvh.normals[sh.hit.tri_idx][0] != Vec3A::ZERO {
+            sh.hit.interpolate_normal(&bvh.normals)
         } else {
-            self.bvh.triangles[hit.tri_idx].normal()
+            bvh.triangles[sh.hit.tri_idx].normal()
         };
-        let mut geom_normal = self.bvh.triangles[hit.tri_idx].normal();
-        if normal.dot(-ray.direction) < 0.0 {
-            normal = -normal;
+        shading_normal = (txf.normal_mat * shading_normal).normalize();
+
+        let mut geom_normal = bvh.triangles[sh.hit.tri_idx].normal();
+        geom_normal = (txf.normal_mat * geom_normal).normalize();
+
+        if shading_normal.dot(-world_ray.direction) < 0.0 {
+            shading_normal = -shading_normal;
             geom_normal = -geom_normal;
         }
 
         ShadingPoint {
-            point,
-            normal,
+            point: world_point,
+            normal: shading_normal,
             geom_normal,
             albedo,
             emission: mat.emission,
@@ -132,7 +195,13 @@ impl TraceScene {
     }
 
     #[inline]
-    fn direct_light(&self, sp: &ShadingPoint, wo: Vec3A, rng: &mut Rng) -> Color {
+    fn direct_light(
+        &self,
+        sp: &ShadingPoint,
+        wo: Vec3A,
+        transforms: &[ObjTransform],
+        rng: &mut Rng,
+    ) -> Color {
         let mut contrib = Color::BLACK;
         for light in &self.lights {
             let Some(ls) = light.sample(sp.point, rng) else {
@@ -142,10 +211,9 @@ impl TraceScene {
             if cos_theta <= 0.0 {
                 continue;
             }
-            if self.shadowed(sp.point, sp.geom_normal, ls.wi, ls.dist) {
+            if self.shadowed(sp.point, sp.geom_normal, ls.wi, ls.dist, transforms) {
                 continue;
             }
-
             let bsdf_val = sp.eval_bsdf(wo, ls.wi);
             let mis_w = if light.is_delta() {
                 1.0
@@ -158,9 +226,24 @@ impl TraceScene {
     }
 
     #[inline]
-    fn shadowed(&self, point: Vec3A, normal: Vec3A, dir: Vec3A, t_max: f32) -> bool {
+    fn shadowed(
+        &self,
+        point: Vec3A,
+        normal: Vec3A,
+        dir: Vec3A,
+        t_max: f32,
+        transforms: &[ObjTransform],
+    ) -> bool {
         let ray = Ray::new(point + offset_along_normal(normal, dir, RAY_EPS), dir);
-        self.bvh.intersect_any(&ray, RAY_EPS, t_max - RAY_EPS)
+        let t_clamped = t_max - RAY_EPS;
+        for (i, obj) in self.objects.iter().enumerate() {
+            let inv = transforms[i].model.inverse();
+            let (local_ray, dir_scale) = Self::ray_to_local(&ray, &inv);
+            if obj.intersect_any(&local_ray, RAY_EPS, t_clamped * dir_scale) {
+                return true;
+            }
+        }
+        false
     }
 
     #[inline]

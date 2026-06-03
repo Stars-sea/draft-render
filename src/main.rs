@@ -4,19 +4,19 @@ mod pipeline;
 mod pmx;
 mod scene;
 
+use std::env;
+use std::sync::Arc;
+use std::time::Instant;
+
+use anyhow::Result;
+use glam::{Quat, Vec3A};
+use minifb::{Key, Window, WindowOptions};
 use crate::color::Color;
 use crate::pipeline::{Accumulator, TraceScene};
 use crate::scene::{
     Camera, DirectionalLight, Material, MeshBuilder, PointLight, Scene, SceneObject, SubMesh,
     Transform,
 };
-
-use anyhow::Result;
-use glam::{Quat, Vec3A};
-use minifb::{Key, Window, WindowOptions};
-use std::env;
-use std::sync::Arc;
-use std::time::Instant;
 
 fn main() -> Result<()> {
     let (width, height) = (800, 600);
@@ -44,6 +44,8 @@ fn main() -> Result<()> {
 
     const SPP: u32 = 16;
 
+    let ts = TraceScene::from_scene(&scene, width, height);
+
     let mut acc = Accumulator::new(width, height);
     let mut window = Window::new("path tracing", width, height, WindowOptions::default())?;
     let first_frame = Instant::now();
@@ -56,11 +58,8 @@ fn main() -> Result<()> {
                 first_frame.elapsed().as_secs_f32() * 0.8,
             ));
 
-        let ts = TraceScene::from_scene(&scene, width, height);
         acc.reset();
-        for _ in 0..SPP {
-            acc.accumulate(&ts, &scene.camera);
-        }
+        acc.accumulate(&ts, &scene.camera, &scene, SPP);
 
         let elapsed = last_frame.elapsed().as_secs_f32();
         let fps = 1.0 / elapsed.max(0.001);
