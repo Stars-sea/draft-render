@@ -19,6 +19,7 @@ impl Texture {
         }
     }
 
+    #[allow(dead_code)]
     pub fn checkerboard(width: usize, height: usize, size: usize, c1: Color, c2: Color) -> Self {
         let n = width * height;
         let mut data = vec![Color::BLACK; n];
@@ -99,26 +100,23 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn solid(albedo: Color) -> Self {
+    fn new_defaults(albedo: Color, texture: Option<Arc<Texture>>) -> Self {
         Self {
             albedo,
             emission: Color::BLACK,
             double_sided: false,
-            texture: None,
+            texture,
             roughness: 1.0,
             metallic: 0.0,
         }
     }
 
+    pub fn solid(albedo: Color) -> Self {
+        Self::new_defaults(albedo, None)
+    }
+
     pub fn textured(texture: Arc<Texture>) -> Self {
-        Self {
-            albedo: Color::WHITE,
-            emission: Color::BLACK,
-            double_sided: false,
-            texture: Some(texture),
-            roughness: 1.0,
-            metallic: 0.0,
-        }
+        Self::new_defaults(Color::WHITE, Some(texture))
     }
 
     pub fn with_roughness(mut self, r: f32) -> Self {
@@ -126,6 +124,7 @@ impl Material {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_metallic(mut self, m: f32) -> Self {
         self.metallic = m;
         self

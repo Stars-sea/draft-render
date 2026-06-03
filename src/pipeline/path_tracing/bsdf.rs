@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::pipeline::path_tracing::sampling::{cosine_sample_hemisphere, orthonormal_basis};
 use fastrand::Rng;
 use glam::Vec3A;
-use std::f32::consts::FRAC_1_PI;
+use std::f32::consts::{FRAC_1_PI, PI};
 
 pub struct BsdfSample {
     pub wi: Vec3A,
@@ -38,32 +38,40 @@ pub fn evaluate(
     let f = fresnel_schlick(cos_wo_wh, f0);
 
     let denom = 4.0 * cos_wo * cos_wi;
-    let specular = if denom > 1e-6 { f * (d * g / denom) } else { Color::BLACK };
+    let specular = if denom > 1e-6 {
+        f * (d * g / denom)
+    } else {
+        Color::BLACK
+    };
 
     diffuse + specular
 }
 
-/// Sample a BSDF direction. Returns the sampled direction and its PDF.
-pub fn sample(
-    wo: Vec3A,
-    n: Vec3A,
-    roughness: f32,
-    metallic: f32,
-    rng: &mut Rng,
-) -> BsdfSample {
-    let cos_wo = n.dot(wo).max(0.0);
-    let f0_avg = 0.04 * (1.0 - metallic) + metallic;
-    let f = fresnel_schlick_f32(cos_wo, f0_avg);
-    let spec_prob = (0.05 + 0.45 * f).min(0.95);
+/// Probability of selecting the specular lobe, used by both `sample()` and `pdf()`.
+fn spec_prob(cos_wo: f32, metallic: f32) -> f32 {
+    let f0 = 0.04 * (1.0 - metallic) + metallic;
+    (0.05 + 0.45 * fresnel_schlick_f32(cos_wo, f0)).min(0.95)
+}
 
-    if rng.f32() < spec_prob {
-        let (wi, pdf) = ggx_sample(wo, n, roughness, rng);
-        BsdfSample { wi, pdf: pdf * spec_prob }
+/// Sample a BSDF direction. The combined MIS PDF is computed by `pdf()`.
+/// Falls back to diffuse when GGX produces an invalid (below-surface) direction.
+pub fn sample(wo: Vec3A, n: Vec3A, roughness: f32, metallic: f32, rng: &mut Rng) -> BsdfSample {
+    let prob = spec_prob(n.dot(wo).max(0.0), metallic);
+
+    let wi = if rng.f32() < prob {
+        let (ggx_wi, ggx_pdf) = ggx_sample(wo, n, roughness, rng);
+        if ggx_pdf > 0.0 && n.dot(ggx_wi) > 0.0 {
+            ggx_wi
+        } else {
+            cosine_sample_hemisphere(n, rng)
+        }
     } else {
-        let wi = cosine_sample_hemisphere(n, rng);
-        let cos_theta = n.dot(wi).max(0.0);
-        let diff_pdf = cos_theta * FRAC_1_PI * (1.0 - spec_prob);
-        BsdfSample { wi, pdf: diff_pdf }
+        cosine_sample_hemisphere(n, rng)
+    };
+
+    BsdfSample {
+        wi,
+        pdf: pdf(wo, wi, n, roughness, metallic),
     }
 }
 
@@ -71,7 +79,7 @@ pub fn sample(
 fn ggx_d(cos_theta_h: f32, alpha: f32) -> f32 {
     let a2 = alpha * alpha;
     let denom = cos_theta_h * cos_theta_h * (a2 - 1.0) + 1.0;
-    a2 / (std::f32::consts::PI * denom * denom)
+    a2 / (PI * denom * denom)
 }
 
 /// Smith geometry shadowing-masking, separable form: G(wo,wi) = G1(wo) * G1(wi).
@@ -103,7 +111,7 @@ fn ggx_sample(wo: Vec3A, n: Vec3A, roughness: f32, rng: &mut Rng) -> (Vec3A, f32
 
     let u1 = rng.f32();
     let u2 = rng.f32();
-    let phi = 2.0 * std::f32::consts::PI * u1;
+    let phi = 2.0 * PI * u1;
     let cos_theta = ((1.0 - u2) / (1.0 + (a2 - 1.0) * u2)).sqrt();
     let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
 
@@ -127,17 +135,13 @@ pub fn pdf(wo: Vec3A, wi: Vec3A, n: Vec3A, roughness: f32, metallic: f32) -> f32
     if cos_wi <= 0.0 {
         return 0.0;
     }
-    let cos_wo = n.dot(wo).max(0.0);
-    let f0_avg = 0.04 * (1.0 - metallic) + metallic;
-    let spec_prob = (0.05 + 0.45 * fresnel_schlick_f32(cos_wo, f0_avg)).min(0.95);
-
+    let prob = spec_prob(n.dot(wo).max(0.0), metallic);
     let diff_pdf = cos_wi * FRAC_1_PI;
 
     let wh = (wo + wi).normalize();
-    let cos_theta_h = n.dot(wh).max(1e-6);
     let alpha = roughness * roughness;
-    let d = ggx_d(cos_theta_h, alpha);
-    let spec_pdf = d * cos_theta_h / (4.0 * wo.dot(wh).max(1e-6));
+    let d = ggx_d(n.dot(wh).max(1e-6), alpha);
+    let spec_pdf = d * n.dot(wh).max(1e-6) / (4.0 * wo.dot(wh).max(1e-6));
 
-    diff_pdf * (1.0 - spec_prob) + spec_pdf * spec_prob
+    diff_pdf * (1.0 - prob) + spec_pdf * prob
 }

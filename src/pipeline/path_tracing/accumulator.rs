@@ -8,8 +8,6 @@ pub struct Accumulator {
     data: Vec<Color>,
     count: Vec<u32>,
     width: usize,
-    #[allow(dead_code)]
-    height: usize,
 }
 
 impl Accumulator {
@@ -19,7 +17,6 @@ impl Accumulator {
             data: vec![Color::BLACK; n],
             count: vec![0; n],
             width,
-            height,
         }
     }
 
@@ -31,9 +28,8 @@ impl Accumulator {
             .zip(self.count.par_iter_mut())
             .enumerate()
             .for_each(|(i, (d, c))| {
-                let x = i % w;
-                let y = i / w;
-                *d += ts.trace_pixel(camera, x, y, *c);
+                let color = ts.trace_pixel(camera, i % w, i / w, *c);
+                *d += color;
                 *c += 1;
             });
     }

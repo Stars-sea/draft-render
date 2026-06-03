@@ -9,7 +9,7 @@ use crate::scene::Camera;
 use fastrand::Rng;
 use glam::Vec3A;
 
-const RAY_EPS: f32 = 1e-4;
+const RAY_EPS: f32 = 1e-3;
 const MAX_DEPTH: u32 = 8;
 const RR_START: u32 = 3;
 
@@ -20,6 +20,27 @@ struct ShadingPoint {
     emission: Color,
     roughness: f32,
     metallic: f32,
+}
+
+impl ShadingPoint {
+    fn eval_bsdf(&self, wo: Vec3A, wi: Vec3A) -> Color {
+        bsdf::evaluate(
+            wo,
+            wi,
+            self.normal,
+            self.albedo,
+            self.roughness,
+            self.metallic,
+        )
+    }
+
+    fn sample_bsdf(&self, wo: Vec3A, rng: &mut Rng) -> bsdf::BsdfSample {
+        bsdf::sample(wo, self.normal, self.roughness, self.metallic, rng)
+    }
+
+    fn pdf_bsdf(&self, wo: Vec3A, wi: Vec3A) -> f32 {
+        bsdf::pdf(wo, wi, self.normal, self.roughness, self.metallic)
+    }
 }
 
 impl TraceScene {
@@ -65,16 +86,13 @@ impl TraceScene {
                 break;
             }
 
-            let sample = bsdf::sample(wo, sp.normal, sp.roughness, sp.metallic, &mut rng);
-            let cos_theta = sp.normal.dot(sample.wi).max(0.0);
-            let value = bsdf::evaluate(
-                wo, sample.wi, sp.normal, sp.albedo, sp.roughness, sp.metallic,
-            );
-            prev_bsdf_pdf = bsdf::pdf(wo, sample.wi, sp.normal, sp.roughness, sp.metallic);
+            let s = sp.sample_bsdf(wo, &mut rng);
+            let cos_theta = sp.normal.dot(s.wi).max(0.0);
+            prev_bsdf_pdf = sp.pdf_bsdf(wo, s.wi);
             prev_point = sp.point;
 
-            throughput *= value * (cos_theta / sample.pdf);
-            ray = Ray::new(sp.point + sample.wi * RAY_EPS, sample.wi);
+            throughput *= sp.eval_bsdf(wo, s.wi) * (cos_theta / s.pdf);
+            ray = Ray::new(sp.point + s.wi * RAY_EPS, s.wi);
         }
 
         radiance
@@ -119,15 +137,11 @@ impl TraceScene {
                 continue;
             }
 
-            let bsdf_val = bsdf::evaluate(
-                wo, ls.wi, sp.normal, sp.albedo, sp.roughness, sp.metallic,
-            );
+            let bsdf_val = sp.eval_bsdf(wo, ls.wi);
             let mis_w = if light.is_delta() {
                 1.0
             } else {
-                let bsdf_pdf =
-                    bsdf::pdf(wo, ls.wi, sp.normal, sp.roughness, sp.metallic);
-                power_heuristic(ls.pdf, bsdf_pdf)
+                power_heuristic(ls.pdf, sp.pdf_bsdf(wo, ls.wi))
             };
             contrib += bsdf_val * ls.radiance * (cos_theta * mis_w / ls.pdf);
         }

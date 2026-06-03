@@ -8,7 +8,7 @@ use crate::color::Color;
 use crate::pipeline::{Accumulator, TraceScene};
 use crate::scene::{
     Camera, DirectionalLight, Material, MeshBuilder, PointLight, Scene, SceneObject, SubMesh,
-    Texture, Transform,
+    Transform,
 };
 
 use anyhow::Result;
@@ -40,14 +40,14 @@ fn main() -> Result<()> {
         scene.add_object(obj);
     } else {
         scene.add_object(cube());
-        scene.add_object(textured_quad());
     }
+
+    const SPP: u32 = 16;
 
     let mut acc = Accumulator::new(width, height);
     let mut window = Window::new("path tracing", width, height, WindowOptions::default())?;
     let first_frame = Instant::now();
     let mut last_frame = Instant::now();
-
     while window.is_open() && !window.is_key_down(Key::Escape) {
         scene.objects[0]
             .transform
@@ -58,7 +58,9 @@ fn main() -> Result<()> {
 
         let ts = TraceScene::from_scene(&scene, width, height);
         acc.reset();
-        acc.accumulate(&ts, &scene.camera);
+        for _ in 0..SPP {
+            acc.accumulate(&ts, &scene.camera);
+        }
 
         let elapsed = last_frame.elapsed().as_secs_f32();
         let fps = 1.0 / elapsed.max(0.001);
@@ -120,31 +122,5 @@ fn cube() -> SceneObject {
             Material::solid(Color::rgb(200, 120, 60)).with_roughness(0.4),
         ),
         Transform::default().with_translation(Vec3A::new(0.0, 0.0, 3.0)),
-    )
-}
-
-fn textured_quad() -> SceneObject {
-    let texture = Arc::new(Texture::checkerboard(
-        256,
-        256,
-        32,
-        Color::WHITE,
-        Color::rgb(50, 50, 160),
-    ));
-    let builder = MeshBuilder::new()
-        .vertex(Vec3A::new(-0.5, -0.5, 0.0))
-        .uv(0.0, 0.0)
-        .vertex(Vec3A::new(0.5, -0.5, 0.0))
-        .uv(1.0, 0.0)
-        .vertex(Vec3A::new(0.5, 0.5, 0.0))
-        .uv(1.0, 1.0)
-        .vertex(Vec3A::new(-0.5, 0.5, 0.0))
-        .uv(0.0, 1.0)
-        .triangle(0, 2, 1)
-        .triangle(0, 3, 2);
-
-    SceneObject::single(
-        SubMesh::new(Arc::new(builder.build()), Material::textured(texture)),
-        Transform::default().with_translation(Vec3A::new(1.5, 0.0, 3.0)),
     )
 }

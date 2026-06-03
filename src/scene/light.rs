@@ -110,6 +110,7 @@ impl Light for PointLight {
 // ── QuadLight ─────────────────────────────────────────────────────
 
 /// Rectangular area light defined by a corner and two edge vectors.
+#[allow(dead_code)]
 pub struct QuadLight {
     pub position: Vec3A,
     pub edge_u: Vec3A,
@@ -120,6 +121,7 @@ pub struct QuadLight {
     inv_area: f32,
 }
 
+#[allow(dead_code)]
 impl QuadLight {
     pub fn new(
         position: Vec3A,

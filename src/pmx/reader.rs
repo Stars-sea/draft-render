@@ -67,6 +67,14 @@ impl Reader {
         ))
     }
 
+    pub fn skip_vec4(&mut self) -> Result<()> {
+        self.read_f32()?;
+        self.read_f32()?;
+        self.read_f32()?;
+        self.read_f32()?;
+        Ok(())
+    }
+
     pub fn read_vec2(&mut self) -> Result<Vec2> {
         Ok(Vec2::new(self.read_f32()?, self.read_f32()?))
     }

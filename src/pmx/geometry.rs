@@ -1,5 +1,5 @@
 use crate::pmx::reader::Reader;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use glam::{Vec2, Vec3A};
 
 pub(crate) struct PmxVertex {
@@ -48,14 +48,15 @@ pub(crate) fn read_vertices(r: &mut Reader) -> Result<Vec<PmxVertex>> {
         let normal = r.read_vec3()?;
         let uv = r.read_vec2()?;
         for _ in 0..r.additional_uv {
-            let _ = r.read_f32()?;
-            let _ = r.read_f32()?;
-            let _ = r.read_f32()?;
-            let _ = r.read_f32()?;
+            r.skip_vec4()?;
         }
         skip_bone_weights(r)?;
         let _edge_scale = r.read_f32()?;
-        verts.push(PmxVertex { position, normal, uv });
+        verts.push(PmxVertex {
+            position,
+            normal,
+            uv,
+        });
     }
     Ok(verts)
 }

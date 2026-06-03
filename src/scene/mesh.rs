@@ -44,6 +44,7 @@ impl MeshBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn uv(mut self, u: f32, v: f32) -> Self {
         self.uvs.push(Vec2::new(u, v));
         self
