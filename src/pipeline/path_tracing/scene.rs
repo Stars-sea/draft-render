@@ -1,12 +1,15 @@
-use crate::geometry::Triangle;
-use crate::pipeline::bvh::Bvh;
-use crate::scene::{Light, Material, Scene, SceneObject, SubMesh};
-use glam::{Vec2, Vec3A};
+use crate::pipeline::bvh::{Bvh, BvhBuilder};
+use crate::scene::{Light, Material, Scene};
+use glam::{Mat3, Mat4};
 use std::sync::Arc;
 
-/// Pre-built ray-tracing data: BVH, material table, and lights.
+pub(super) struct ObjTransform {
+    pub(crate) model: Mat4,
+    pub(crate) normal_mat: Mat3,
+}
+
 pub struct TraceScene {
-    pub(crate) bvh: Bvh,
+    pub(crate) objects: Vec<Bvh>,
     pub(crate) materials: Vec<Material>,
     pub(crate) lights: Vec<Arc<dyn Light>>,
     pub(crate) width: usize,
@@ -15,105 +18,28 @@ pub struct TraceScene {
 
 impl TraceScene {
     pub fn from_scene(scene: &Scene, width: usize, height: usize) -> Self {
-        let mut builder = SceneBuilder::new();
+        let mut materials = Vec::new();
+        let mut objects = Vec::new();
+
         for obj in &scene.objects {
-            builder.push_object(obj);
-        }
-        builder.build(scene.lights.clone(), width, height)
-    }
-}
+            let normal_mat = obj.transform.normal_matrix();
+            let mut builder = BvhBuilder::new();
 
-struct SceneBuilder {
-    triangles: Vec<Triangle>,
-    material_ids: Vec<u32>,
-    materials: Vec<Material>,
-    tri_uvs: Vec<[Vec2; 3]>,
-    tri_normals: Vec<[Vec3A; 3]>,
-}
-
-impl SceneBuilder {
-    fn new() -> Self {
-        Self {
-            triangles: Vec::new(),
-            material_ids: Vec::new(),
-            materials: Vec::new(),
-            tri_uvs: Vec::new(),
-            tri_normals: Vec::new(),
-        }
-    }
-
-    fn push_object(&mut self, obj: &SceneObject) {
-        let model = obj.transform.transform_matrix();
-        for sub in &obj.submeshes {
-            if sub
-                .material
-                .texture
-                .as_ref()
-                .is_some_and(|t| t.is_dark_effect())
-            {
-                continue;
+            for sub in &obj.submeshes {
+                if sub.material.texture.as_ref().is_some_and(|t| t.is_dark_effect()) {
+                    continue;
+                }
+                let mat_id = materials.len() as u32;
+                materials.push(sub.material.clone());
+                builder.push(&sub.mesh, normal_mat, mat_id, sub.material.double_sided);
             }
-            self.push_submesh(sub, &model);
-        }
-    }
 
-    fn push_submesh(&mut self, sub: &SubMesh, model: &glam::Mat4) {
-        let mat_id = self.materials.len() as u32;
-        self.materials.push(sub.material.clone());
-
-        let verts: Vec<Vec3A> = sub
-            .mesh
-            .vertices
-            .iter()
-            .map(|&v| model.transform_point3a(v))
-            .collect();
-        let mesh_uvs = &sub.mesh.uvs;
-        let mesh_normals = &sub.mesh.normals;
-        for &[i0, i1, i2] in &sub.mesh.indices {
-            self.triangles
-                .push(Triangle::new(verts[i0], verts[i1], verts[i2]));
-            self.material_ids.push(mat_id);
-            let uv = if mesh_uvs.is_empty() {
-                [Vec2::ZERO; 3]
-            } else {
-                [mesh_uvs[i0], mesh_uvs[i1], mesh_uvs[i2]]
-            };
-            self.tri_uvs.push(uv);
-            let n = if mesh_normals.is_empty() {
-                [Vec3A::ZERO; 3]
-            } else {
-                let n0 = model.transform_vector3a(mesh_normals[i0]).normalize();
-                let n1 = model.transform_vector3a(mesh_normals[i1]).normalize();
-                let n2 = model.transform_vector3a(mesh_normals[i2]).normalize();
-                [n0, n1, n2]
-            };
-            self.tri_normals.push(n);
+            let bvh = builder.build();
+            if !bvh.triangles.is_empty() {
+                objects.push(bvh);
+            }
         }
-    }
 
-    fn build(
-        self,
-        lights: Vec<Arc<dyn Light>>,
-        width: usize,
-        height: usize,
-    ) -> TraceScene {
-        let cull_backface: Vec<bool> = self
-            .material_ids
-            .iter()
-            .map(|&id| !self.materials[id as usize].double_sided)
-            .collect();
-        TraceScene {
-            bvh: Bvh::build(
-                self.triangles,
-                self.material_ids,
-                self.tri_uvs,
-                self.tri_normals,
-                cull_backface,
-            ),
-            materials: self.materials,
-            lights,
-            width,
-            height,
-        }
+        TraceScene { objects, materials, lights: scene.lights.clone(), width, height }
     }
 }

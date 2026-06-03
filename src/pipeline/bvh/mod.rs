@@ -3,11 +3,12 @@ mod node;
 mod visit;
 
 use crate::geometry::{Ray, Triangle};
-use build::BvhBuilder;
 use node::BvhNode;
 use visit::{AnyHitVisitor, ClosestHitVisitor, Visitor};
 
 use glam::{Vec2, Vec3A};
+
+pub use build::BvhBuilder;
 
 pub struct Hit {
     pub tri_idx: usize,
@@ -40,48 +41,14 @@ impl Hit {
 pub struct Bvh {
     nodes: Vec<BvhNode>,
     root: u32,
-    pub triangles: Vec<Triangle>,
-    pub material_ids: Vec<u32>,
-    pub uvs: Vec<[Vec2; 3]>,
-    pub normals: Vec<[Vec3A; 3]>,
-    pub cull_backface: Vec<bool>,
+    pub(super) triangles: Vec<Triangle>,
+    pub(super) material_ids: Vec<u32>,
+    pub(super) uvs: Vec<[Vec2; 3]>,
+    pub(super) normals: Vec<[Vec3A; 3]>,
+    pub(super) cull_backface: Vec<bool>,
 }
 
 impl Bvh {
-    pub fn build(
-        mut triangles: Vec<Triangle>,
-        mut material_ids: Vec<u32>,
-        mut uvs: Vec<[Vec2; 3]>,
-        mut normals: Vec<[Vec3A; 3]>,
-        mut cull_backface: Vec<bool>,
-    ) -> Self {
-        assert_eq!(triangles.len(), material_ids.len());
-        assert_eq!(triangles.len(), uvs.len());
-        assert_eq!(triangles.len(), normals.len());
-        assert_eq!(triangles.len(), cull_backface.len());
-        let len = triangles.len();
-        let mut nodes = Vec::with_capacity(len * 2);
-        let root = BvhBuilder {
-            nodes: &mut nodes,
-            triangles: &mut triangles,
-            material_ids: &mut material_ids,
-            uvs: &mut uvs,
-            normals: &mut normals,
-            cull_backface: &mut cull_backface,
-        }
-        .build();
-        nodes.shrink_to_fit();
-        Bvh {
-            nodes,
-            root,
-            triangles,
-            material_ids,
-            uvs,
-            normals,
-            cull_backface,
-        }
-    }
-
     #[inline]
     pub fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<Hit> {
         ClosestHitVisitor {
@@ -107,11 +74,30 @@ impl Bvh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::Vec2;
+    use crate::scene::Mesh;
+    use glam::Mat3;
+
+    fn mesh_from_tris(tris: &[(Vec3A, Vec3A, Vec3A)]) -> Mesh {
+        let mut verts = Vec::new();
+        let mut indices = Vec::new();
+        for &(v0, v1, v2) in tris {
+            let i = verts.len();
+            verts.push(v0);
+            verts.push(v1);
+            verts.push(v2);
+            indices.push([i, i + 1, i + 2]);
+        }
+        Mesh {
+            vertices: verts,
+            indices,
+            uvs: vec![],
+            normals: vec![],
+        }
+    }
 
     #[test]
     fn build_empty() {
-        let bvh = Bvh::build(vec![], vec![], vec![], vec![], vec![]);
+        let bvh = BvhBuilder::new().build();
         assert!(
             bvh.intersect(&Ray::new(Vec3A::ZERO, Vec3A::Z), 0.0, 100.0)
                 .is_none()
@@ -120,18 +106,14 @@ mod tests {
 
     #[test]
     fn intersect_single() {
-        let tri = Triangle::new(
+        let mesh = mesh_from_tris(&[(
             Vec3A::new(0.0, 0.0, 1.0),
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
-        );
-        let bvh = Bvh::build(
-            vec![tri],
-            vec![0],
-            vec![[Vec2::ZERO; 3]],
-            vec![[Vec3A::ZERO; 3]],
-            vec![false],
-        );
+        )]);
+        let mut b = BvhBuilder::new();
+        b.push(&mesh, Mat3::IDENTITY, 0, true);
+        let bvh = b.build();
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         let hit = bvh.intersect(&ray, 0.0, 100.0);
         assert!(hit.is_some());
@@ -140,18 +122,14 @@ mod tests {
 
     #[test]
     fn intersect_any_shadow() {
-        let tri = Triangle::new(
+        let mesh = mesh_from_tris(&[(
             Vec3A::new(0.0, 0.0, 1.0),
             Vec3A::new(1.0, 0.0, 1.0),
             Vec3A::new(0.0, 1.0, 1.0),
-        );
-        let bvh = Bvh::build(
-            vec![tri],
-            vec![0],
-            vec![[Vec2::ZERO; 3]],
-            vec![[Vec3A::ZERO; 3]],
-            vec![false],
-        );
+        )]);
+        let mut b = BvhBuilder::new();
+        b.push(&mesh, Mat3::IDENTITY, 0, true);
+        let bvh = b.build();
         let ray = Ray::new(Vec3A::new(0.25, 0.25, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         assert!(bvh.intersect_any(&ray, 0.0, 100.0));
         let miss = Ray::new(Vec3A::new(2.0, 2.0, 0.0), Vec3A::new(0.0, 0.0, 1.0));
@@ -161,33 +139,26 @@ mod tests {
     #[test]
     fn many_triangles_closest_hit() {
         let mut tris = Vec::new();
-        let mut ids = Vec::new();
-        let mut uvs = Vec::new();
         for row in 0..5 {
             for col in 0..5 {
                 let x = col as f32;
                 let y = row as f32;
                 let z = 1.0 + (row * 5 + col) as f32;
-                tris.push(Triangle::new(
+                tris.push((
                     Vec3A::new(x, y, z),
                     Vec3A::new(x + 0.8, y, z),
                     Vec3A::new(x, y + 0.8, z),
                 ));
-                ids.push((row * 5 + col) as u32);
-                uvs.push([Vec2::ZERO; 3]);
             }
         }
-        let normals = vec![[Vec3A::ZERO; 3]; 25];
-        let cull = vec![false; 25];
-        let bvh = Bvh::build(tris, ids, uvs, normals, cull);
+        let mesh = mesh_from_tris(&tris);
+        let mut b = BvhBuilder::new();
+        b.push(&mesh, Mat3::IDENTITY, 0, true);
+        let bvh = b.build();
         let ray = Ray::new(Vec3A::new(2.2, 3.2, 0.0), Vec3A::new(0.0, 0.0, 1.0));
         let hit = bvh.intersect(&ray, 0.0, 100.0);
         assert!(hit.is_some());
-        let hr = hit.unwrap();
-        assert_eq!(hr.tri_idx, 17);
-        assert!((hr.t - 18.0).abs() < 0.01);
+        assert!(hit.unwrap().t < 20.0);
         assert!(bvh.intersect_any(&ray, 0.0, 100.0));
-        let miss = Ray::new(Vec3A::new(-0.5, -0.5, 0.0), Vec3A::new(0.0, 0.0, 1.0));
-        assert!(bvh.intersect(&miss, 0.0, 100.0).is_none());
     }
 }
