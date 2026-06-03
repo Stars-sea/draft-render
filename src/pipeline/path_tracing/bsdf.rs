@@ -53,17 +53,17 @@ fn spec_prob(cos_wo: f32, metallic: f32) -> f32 {
     (0.05 + 0.45 * fresnel_schlick_f32(cos_wo, f0)).min(0.95)
 }
 
-/// Sample a BSDF direction. The combined MIS PDF is computed by `pdf()`.
-/// Falls back to diffuse when GGX produces an invalid (below-surface) direction.
+/// Sample a BSDF direction. GGX is retried until a valid (above-surface)
+/// direction is produced, so the MIS PDF from `pdf()` always matches.
 pub fn sample(wo: Vec3A, n: Vec3A, roughness: f32, metallic: f32, rng: &mut Rng) -> BsdfSample {
     let prob = spec_prob(n.dot(wo).max(0.0), metallic);
 
     let wi = if rng.f32() < prob {
-        let (ggx_wi, ggx_pdf) = ggx_sample(wo, n, roughness, rng);
-        if ggx_pdf > 0.0 && n.dot(ggx_wi) > 0.0 {
-            ggx_wi
-        } else {
-            cosine_sample_hemisphere(n, rng)
+        loop {
+            let (ggx_wi, ggx_pdf) = ggx_sample(wo, n, roughness, rng);
+            if ggx_pdf > 0.0 && n.dot(ggx_wi) > 0.0 {
+                break ggx_wi;
+            }
         }
     } else {
         cosine_sample_hemisphere(n, rng)

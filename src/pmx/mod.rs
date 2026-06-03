@@ -49,9 +49,11 @@ fn build_submeshes(
 
     for mat in materials {
         let tri_count = (mat.num_face_vertices as usize) / 3;
-        if tri_count == 0 || face_offset + tri_count > faces.len() {
-            face_offset += tri_count;
+        if tri_count == 0 {
             continue;
+        }
+        if face_offset + tri_count > faces.len() {
+            break;
         }
 
         let mut remap: HashMap<usize, usize> = HashMap::new();

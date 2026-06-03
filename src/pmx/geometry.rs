@@ -67,9 +67,9 @@ pub(crate) fn read_faces(r: &mut Reader) -> Result<Vec<[usize; 3]>> {
     for _ in 0..count {
         raw.push(r.read_raw_vertex_index()?);
     }
-    // PMX spec says 1-based indexing, but some 2.1 exporters use 0-based.
-    // Detect by the minimum index value and use it as the base offset.
-    let offset = *raw.iter().min().unwrap_or(&1);
+    // PMX spec says 1-based indexing. Detect 0-based files: if any index
+    // is 0 the file uses 0-based indexing (1-based would start at 1).
+    let offset = if raw.contains(&0) { 0 } else { 1 };
     let mut faces = Vec::with_capacity(count / 3);
     for chunk in raw.chunks_exact(3) {
         faces.push([

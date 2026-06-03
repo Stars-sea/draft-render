@@ -1,14 +1,15 @@
 use fastrand::Rng;
 use glam::{Vec2, Vec3A};
 
-pub(super) fn stratify_jitter(sample_index: u32) -> Vec2 {
+pub(super) fn stratify_jitter(seed: u64) -> Vec2 {
     const GRID: u32 = 8;
-    let idx = sample_index % (GRID * GRID);
+    let mut rng = Rng::with_seed(seed);
+    let idx = (seed as u32) % (GRID * GRID);
     let x = idx % GRID;
     let y = idx / GRID;
     Vec2::new(
-        (x as f32 + 0.5) / GRID as f32,
-        (y as f32 + 0.5) / GRID as f32,
+        (x as f32 + rng.f32()) / GRID as f32,
+        (y as f32 + rng.f32()) / GRID as f32,
     )
 }
 
