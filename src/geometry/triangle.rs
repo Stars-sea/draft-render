@@ -39,6 +39,11 @@ impl Triangle {
         }
     }
 
+    /// True when the ray hits the back face (normal points opposite to ray).
+    pub fn is_backface_to(&self, ray_dir: Vec3A) -> bool {
+        self.normal().dot(-ray_dir) < 0.0
+    }
+
     pub fn bounding_box(&self) -> BoundingBox {
         let (v1, v2) = (self.v1(), self.v2());
         BoundingBox {

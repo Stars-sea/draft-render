@@ -7,7 +7,6 @@ pub struct Mesh {
     pub indices: Vec<[usize; 3]>,
     pub uvs: Vec<Vec2>,
     /// Per-vertex normals. Empty means flat shading will be auto-computed.
-    #[allow(dead_code)]
     pub normals: Vec<Vec3A>,
 }
 
@@ -39,23 +38,27 @@ impl MeshBuilder {
         }
     }
 
+    #[must_use]
     pub fn vertex(mut self, v: Vec3A) -> Self {
         self.vertices.push(v);
         self
     }
 
     #[allow(dead_code)]
+    #[must_use]
     pub fn uv(mut self, u: f32, v: f32) -> Self {
         self.uvs.push(Vec2::new(u, v));
         self
     }
 
     #[allow(dead_code)]
+    #[must_use]
     pub fn normal(mut self, x: f32, y: f32, z: f32) -> Self {
         self.normals.push(Vec3A::new(x, y, z));
         self
     }
 
+    #[must_use]
     pub fn triangle(mut self, i0: usize, i1: usize, i2: usize) -> Self {
         self.indices.push([i0, i1, i2]);
         self

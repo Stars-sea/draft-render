@@ -11,6 +11,16 @@ pub(crate) struct Reader {
     pub material_index_size: u8,
 }
 
+macro_rules! read_le {
+    ($name:ident, $ty:ty, $n:literal) => {
+        pub fn $name(&mut self) -> Result<$ty> {
+            let mut b = [0u8; $n];
+            self.cur.read_exact(&mut b)?;
+            Ok(<$ty>::from_le_bytes(b))
+        }
+    };
+}
+
 impl Reader {
     pub fn new(data: Vec<u8>) -> Self {
         Self {
@@ -30,34 +40,13 @@ impl Reader {
     }
 
     pub fn read_i8(&mut self) -> Result<i8> {
-        let mut b = [0u8; 1];
-        self.cur.read_exact(&mut b)?;
-        Ok(b[0] as i8)
+        Ok(self.read_u8()? as i8)
     }
 
-    pub fn read_i16(&mut self) -> Result<i16> {
-        let mut b = [0u8; 2];
-        self.cur.read_exact(&mut b)?;
-        Ok(i16::from_le_bytes(b))
-    }
-
-    pub fn read_u16(&mut self) -> Result<u16> {
-        let mut b = [0u8; 2];
-        self.cur.read_exact(&mut b)?;
-        Ok(u16::from_le_bytes(b))
-    }
-
-    pub fn read_i32(&mut self) -> Result<i32> {
-        let mut b = [0u8; 4];
-        self.cur.read_exact(&mut b)?;
-        Ok(i32::from_le_bytes(b))
-    }
-
-    pub fn read_f32(&mut self) -> Result<f32> {
-        let mut b = [0u8; 4];
-        self.cur.read_exact(&mut b)?;
-        Ok(f32::from_le_bytes(b))
-    }
+    read_le!(read_u16, u16, 2);
+    read_le!(read_i16, i16, 2);
+    read_le!(read_i32, i32, 4);
+    read_le!(read_f32, f32, 4);
 
     pub fn read_vec3(&mut self) -> Result<Vec3A> {
         Ok(Vec3A::new(
@@ -68,10 +57,9 @@ impl Reader {
     }
 
     pub fn skip_vec4(&mut self) -> Result<()> {
-        self.read_f32()?;
-        self.read_f32()?;
-        self.read_f32()?;
-        self.read_f32()?;
+        for _ in 0..4 {
+            self.read_f32()?;
+        }
         Ok(())
     }
 
@@ -165,9 +153,8 @@ pub(crate) fn read_header(r: &mut Reader) -> Result<()> {
 }
 
 pub(crate) fn skip_model_info(r: &mut Reader) -> Result<()> {
-    r.read_string()?;
-    r.read_string()?;
-    r.read_string()?;
-    r.read_string()?;
+    for _ in 0..4 {
+        r.read_string()?;
+    }
     Ok(())
 }

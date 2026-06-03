@@ -69,7 +69,7 @@ impl TraceScene {
 
             let sp = self.resolve_hit(&hit, &ray);
 
-            if sp.emission.0.max_element() > 0.0 {
+            if sp.emission.max_channel() > 0.0 {
                 if depth == 0 {
                     radiance += throughput * sp.emission;
                 } else {
@@ -93,12 +93,10 @@ impl TraceScene {
             prev_point = sp.point;
 
             throughput *= sp.eval_bsdf(wo, s.wi) * (cos_theta / s.pdf);
-            let offset = if sp.geom_normal.dot(s.wi) > 0.0 {
-                sp.geom_normal * RAY_EPS
-            } else {
-                -sp.geom_normal * RAY_EPS
-            };
-            ray = Ray::new(sp.point + offset, s.wi);
+            ray = Ray::new(
+                sp.point + offset_along_normal(sp.geom_normal, s.wi, RAY_EPS),
+                s.wi,
+            );
         }
 
         radiance
@@ -161,12 +159,7 @@ impl TraceScene {
 
     #[inline]
     fn shadowed(&self, point: Vec3A, normal: Vec3A, dir: Vec3A, t_max: f32) -> bool {
-        let offset = if normal.dot(dir) > 0.0 {
-            normal * RAY_EPS
-        } else {
-            -normal * RAY_EPS
-        };
-        let ray = Ray::new(point + offset, dir);
+        let ray = Ray::new(point + offset_along_normal(normal, dir, RAY_EPS), dir);
         self.bvh.intersect_any(&ray, RAY_EPS, t_max - RAY_EPS)
     }
 
@@ -180,12 +173,20 @@ impl TraceScene {
         if depth < RR_START {
             return false;
         }
-        let p = throughput.0.max_element().min(0.9);
+        let p = throughput.max_channel().min(0.9);
         if rng.f32() > p {
             return true;
         }
         *throughput *= 1.0 / p;
         false
+    }
+}
+
+fn offset_along_normal(normal: Vec3A, dir: Vec3A, eps: f32) -> Vec3A {
+    if normal.dot(dir) > 0.0 {
+        normal * eps
+    } else {
+        -normal * eps
     }
 }
 

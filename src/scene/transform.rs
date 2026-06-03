@@ -38,16 +38,19 @@ impl Transform {
         self.scale = scale;
     }
 
+    #[must_use]
     pub fn with_translation(mut self, translation: Vec3A) -> Self {
         self.set_translation(translation);
         self
     }
 
+    #[must_use]
     pub fn with_rotation(mut self, rotation: Quat) -> Self {
         self.set_rotation(rotation);
         self
     }
 
+    #[must_use]
     pub fn with_scale(mut self, scale: Vec3A) -> Self {
         self.set_scale(scale);
         self

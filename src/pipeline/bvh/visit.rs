@@ -43,29 +43,29 @@ impl TraversalStack {
         let hit_l = nodes[left as usize].bbox().intersect_range(ray);
         let hit_r = nodes[right as usize].bbox().intersect_range(ray);
 
-        let pass_l = hit_l.is_some_and(|(tn, tf)| tn.max(t_min) <= tf.min(t_max));
-        let pass_r = hit_r.is_some_and(|(tn, tf)| tn.max(t_min) <= tf.min(t_max));
+        let pass = |h: Option<(f32, f32)>| h.is_some_and(|(tn, tf)| tn.max(t_min) <= tf.min(t_max));
 
-        if !pass_l && !pass_r {
-            return;
-        }
-
-        if pass_l && pass_r {
-            let (tn_l, _) = hit_l.unwrap();
-            let (tn_r, _) = hit_r.unwrap();
-            if tn_l <= tn_r {
-                self.data[self.sp] = right;
-                self.data[self.sp + 1] = left;
-            } else {
-                self.data[self.sp] = left;
-                self.data[self.sp + 1] = right;
+        match (hit_l.filter(|_| pass(hit_l)), hit_r.filter(|_| pass(hit_r))) {
+            (Some((tn_l, _)), Some((tn_r, _))) => {
+                if tn_l <= tn_r {
+                    self.data[self.sp] = right;
+                    self.data[self.sp + 1] = left;
+                } else {
+                    self.data[self.sp] = left;
+                    self.data[self.sp + 1] = right;
+                }
+                self.sp += 2;
             }
-            self.sp += 2;
-            return;
+            (Some(_), None) => {
+                self.data[self.sp] = left;
+                self.sp += 1;
+            }
+            (None, Some(_)) => {
+                self.data[self.sp] = right;
+                self.sp += 1;
+            }
+            (None, None) => {}
         }
-
-        self.data[self.sp] = if pass_l { left } else { right };
-        self.sp += 1;
     }
 }
 
@@ -145,11 +145,8 @@ impl<'a> Visitor for ClosestHitVisitor<'a> {
             if let Some((t, u, v)) = intersect(ray, tri)
                 && (t_min..self.t_closest).contains(&t)
             {
-                if self.cull_backface[start + i] {
-                    let n = tri.normal();
-                    if n.dot(-ray.direction) < 0.0 {
-                        continue;
-                    }
+                if self.cull_backface[start + i] && tri.is_backface_to(ray.direction) {
+                    continue;
                 }
                 self.t_closest = t;
                 self.best = Some((start + i, t, u, v));
@@ -188,11 +185,8 @@ impl<'a> Visitor for AnyHitVisitor<'a> {
             if let Some((t, _, _)) = intersect(ray, tri)
                 && (t_min..self.t_max).contains(&t)
             {
-                if self.cull_backface[start + i] {
-                    let n = tri.normal();
-                    if n.dot(-ray.direction) < 0.0 {
-                        continue;
-                    }
+                if self.cull_backface[start + i] && tri.is_backface_to(ray.direction) {
+                    continue;
                 }
                 self.found = true;
                 return false;

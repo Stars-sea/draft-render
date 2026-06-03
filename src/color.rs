@@ -23,17 +23,8 @@ impl Color {
         Color::rgb(r, g, b)
     }
 
-    #[allow(dead_code)]
-    pub fn r(&self) -> f32 {
-        self.0.x
-    }
-    #[allow(dead_code)]
-    pub fn g(&self) -> f32 {
-        self.0.y
-    }
-    #[allow(dead_code)]
-    pub fn b(&self) -> f32 {
-        self.0.z
+    pub fn max_channel(&self) -> f32 {
+        self.0.max_element()
     }
 
     /// ACES filmic tone-map + sRGB gamma → ARGB `u32` for the framebuffer.

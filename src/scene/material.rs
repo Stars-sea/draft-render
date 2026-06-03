@@ -1,5 +1,5 @@
 use crate::color::Color;
-use glam::Vec2;
+use glam::{FloatExt, Vec2};
 use std::sync::Arc;
 
 pub struct Texture {
@@ -61,9 +61,9 @@ impl Texture {
         let bot_c = self.data[i01].lerp(&self.data[i11], fx);
         let color = top_c.lerp(&bot_c, fy);
 
-        let top_a = lerp_f32(self.alpha[i00], self.alpha[i10], fx);
-        let bot_a = lerp_f32(self.alpha[i01], self.alpha[i11], fx);
-        let alpha = lerp_f32(top_a, bot_a, fy);
+        let top_a = self.alpha[i00].lerp(self.alpha[i10], fx);
+        let bot_a = self.alpha[i01].lerp(self.alpha[i11], fx);
+        let alpha = top_a.lerp(bot_a, fy);
 
         (color, alpha)
     }
@@ -75,17 +75,13 @@ impl Texture {
         let step = (n / 500).max(1);
         let (mut dark, mut total) = (0usize, 0usize);
         for i in (0..n).step_by(step) {
-            if self.data[i].0.max_element() < 0.02 && self.alpha[i] < 0.1 {
+            if self.data[i].max_channel() < 0.02 && self.alpha[i] < 0.1 {
                 dark += 1;
             }
             total += 1;
         }
         dark as f32 / total as f32 > 0.9
     }
-}
-
-fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
 }
 
 #[derive(Clone)]
@@ -119,17 +115,20 @@ impl Material {
         Self::new_defaults(Color::WHITE, Some(texture))
     }
 
+    #[must_use]
     pub fn with_roughness(mut self, r: f32) -> Self {
         self.roughness = r;
         self
     }
 
+    #[must_use]
     #[allow(dead_code)]
     pub fn with_metallic(mut self, m: f32) -> Self {
         self.metallic = m;
         self
     }
 
+    #[must_use]
     pub fn with_double_sided(mut self) -> Self {
         self.double_sided = true;
         self
@@ -141,10 +140,5 @@ impl Material {
             Some(tex) => tex.sample(uv),
             None => (self.albedo, 1.0),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn double_sided(&self) -> bool {
-        self.double_sided
     }
 }
