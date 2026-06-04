@@ -1,4 +1,12 @@
+use crate::geometry::Ray;
 use glam::{Mat3, Mat4, Quat, Vec3, Vec3A};
+
+/// Pre-computed transform matrices for a scene object, used during ray tracing.
+#[derive(Clone, Copy)]
+pub struct ObjTransform {
+    pub model: Mat4,
+    pub normal_mat: Mat3,
+}
 
 pub struct Transform {
     translation: Vec3A,
@@ -69,6 +77,24 @@ impl Transform {
         let r = Mat3::from_quat(self.rotation);
         let s_inv = Mat3::from_diagonal(1.0 / Vec3::from(self.scale));
         r * s_inv
+    }
+
+    pub fn to_obj_transform(&self) -> ObjTransform {
+        ObjTransform {
+            model: self.transform_matrix(),
+            normal_mat: self.normal_matrix(),
+        }
+    }
+}
+
+impl ObjTransform {
+    /// Transform a world-space ray to local space. Returns `(local_ray, dir_scale)`.
+    pub fn ray_to_local(&self, ray: &Ray) -> (Ray, f32) {
+        let inv = self.model.inverse();
+        let origin = inv.transform_point3a(ray.origin);
+        let dir_raw = inv.transform_vector3a(ray.direction);
+        let s = dir_raw.length();
+        (Ray::new(origin, dir_raw / s), s)
     }
 }
 

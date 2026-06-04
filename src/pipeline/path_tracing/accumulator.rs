@@ -1,6 +1,7 @@
+use super::tracer::PathTracer;
 use crate::color::Color;
-use crate::pipeline::path_tracing::scene::{ObjTransform, TraceScene};
-use crate::scene::{Camera, Scene};
+use crate::pipeline::path_tracing::scene::TraceScene;
+use crate::scene::{ObjTransform, Scene};
 use rayon::prelude::*;
 
 /// Progressive accumulation buffer: accumulates per-pixel HDR samples.
@@ -21,20 +22,18 @@ impl Accumulator {
     }
 
     /// Trace `spp` samples per pixel, accumulating into the HDR buffer.
-    pub fn accumulate(&mut self, ts: &TraceScene, camera: &Camera, scene: &Scene, spp: u32) {
+    pub fn accumulate(&mut self, ts: &TraceScene, scene: &Scene, spp: u32) {
         let transforms: Vec<ObjTransform> = scene
             .objects
             .iter()
-            .map(|obj| ObjTransform {
-                model: obj.transform.transform_matrix(),
-                normal_mat: obj.transform.normal_matrix(),
-            })
+            .map(|obj| obj.transform.to_obj_transform())
             .collect();
+        let pt = PathTracer::new(ts, &transforms);
 
         for si in 0..spp {
             let w = self.width;
             self.data.par_iter_mut().enumerate().for_each(|(i, d)| {
-                *d += ts.trace_pixel(camera, &transforms, i % w, i / w, si);
+                *d += pt.trace_pixel(i % w, i / w, si);
             });
         }
 

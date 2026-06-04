@@ -34,7 +34,48 @@ pub fn load_pmx(path: impl AsRef<Path>) -> Result<Vec<SubMesh>> {
     }
 
     let materials = read_materials(&mut r)?;
-    Ok(build_submeshes(&verts, &faces, &textures, &materials, pmx_dir))
+    Ok(build_submeshes(
+        &verts, &faces, &textures, &materials, pmx_dir,
+    ))
+}
+
+fn build_submesh(
+    verts: &[PmxVertex],
+    faces_slice: &[[usize; 3]],
+    mat: &PmxMaterial,
+    textures: &[String],
+    pmx_dir: &Path,
+) -> SubMesh {
+    let mut remap: HashMap<usize, usize> = HashMap::new();
+    let mut out_verts: Vec<Vec3A> = Vec::new();
+    let mut out_uvs: Vec<Vec2> = Vec::new();
+    let mut out_normals: Vec<Vec3A> = Vec::new();
+    let mut out_indices: Vec<[usize; 3]> = Vec::new();
+
+    for tri in faces_slice {
+        let mut new_tri = [0usize; 3];
+        for (k, &vi) in tri.iter().enumerate() {
+            let next_idx = out_verts.len();
+            let new_idx = *remap.entry(vi).or_insert_with(|| {
+                out_verts.push(verts[vi].position);
+                out_uvs.push(verts[vi].uv);
+                out_normals.push(verts[vi].normal);
+                next_idx
+            });
+            new_tri[k] = new_idx;
+        }
+        out_indices.push(new_tri);
+    }
+
+    SubMesh::new(
+        Arc::new(Mesh {
+            vertices: out_verts,
+            indices: out_indices,
+            uvs: out_uvs,
+            normals: out_normals,
+        }),
+        mat.to_material(textures, pmx_dir),
+    )
 }
 
 fn build_submeshes(
@@ -56,37 +97,14 @@ fn build_submeshes(
             break;
         }
 
-        let mut remap: HashMap<usize, usize> = HashMap::new();
-        let mut out_verts: Vec<Vec3A> = Vec::new();
-        let mut out_uvs: Vec<Vec2> = Vec::new();
-        let mut out_normals: Vec<Vec3A> = Vec::new();
-        let mut out_indices: Vec<[usize; 3]> = Vec::new();
-
-        for tri in &faces[face_offset..face_offset + tri_count] {
-            let mut new_tri = [0usize; 3];
-            for (k, &vi) in tri.iter().enumerate() {
-                let next_idx = out_verts.len();
-                let new_idx = *remap.entry(vi).or_insert_with(|| {
-                    out_verts.push(verts[vi].position);
-                    out_uvs.push(verts[vi].uv);
-                    out_normals.push(verts[vi].normal);
-                    next_idx
-                });
-                new_tri[k] = new_idx;
-            }
-            out_indices.push(new_tri);
-        }
-        face_offset += tri_count;
-
-        submeshes.push(SubMesh::new(
-            Arc::new(Mesh {
-                vertices: out_verts,
-                indices: out_indices,
-                uvs: out_uvs,
-                normals: out_normals,
-            }),
-            mat.to_material(textures, pmx_dir),
+        submeshes.push(build_submesh(
+            verts,
+            &faces[face_offset..face_offset + tri_count],
+            mat,
+            textures,
+            pmx_dir,
         ));
+        face_offset += tri_count;
     }
 
     submeshes

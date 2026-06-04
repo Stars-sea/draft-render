@@ -50,6 +50,16 @@ pub struct Bvh {
 
 impl Bvh {
     #[inline]
+    pub fn tri_data(&self, tri_idx: usize) -> (&Triangle, u32, &[Vec2; 3], &[Vec3A; 3]) {
+        (
+            &self.triangles[tri_idx],
+            self.material_ids[tri_idx],
+            &self.uvs[tri_idx],
+            &self.normals[tri_idx],
+        )
+    }
+
+    #[inline]
     pub fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<Hit> {
         ClosestHitVisitor {
             t_closest: t_max,

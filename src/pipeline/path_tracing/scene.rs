@@ -1,19 +1,14 @@
 use crate::pipeline::bvh::{Bvh, BvhBuilder};
-use crate::scene::{Light, Material, Scene};
-use glam::{Mat3, Mat4};
+use crate::scene::{Camera, Light, Material, Scene};
 use std::sync::Arc;
 
-pub(super) struct ObjTransform {
-    pub(crate) model: Mat4,
-    pub(crate) normal_mat: Mat3,
-}
-
 pub struct TraceScene {
-    pub(crate) objects: Vec<Bvh>,
-    pub(crate) materials: Vec<Material>,
-    pub(crate) lights: Vec<Arc<dyn Light>>,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
+    pub(super) objects: Vec<Bvh>,
+    pub(super) materials: Vec<Material>,
+    pub(super) lights: Vec<Arc<dyn Light>>,
+    pub(super) camera: Camera,
+    pub(super) width: usize,
+    pub(super) height: usize,
 }
 
 impl TraceScene {
@@ -26,7 +21,12 @@ impl TraceScene {
             let mut builder = BvhBuilder::new();
 
             for sub in &obj.submeshes {
-                if sub.material.texture.as_ref().is_some_and(|t| t.is_dark_effect()) {
+                if sub
+                    .material
+                    .texture
+                    .as_ref()
+                    .is_some_and(|t| t.is_dark_effect())
+                {
                     continue;
                 }
                 let mat_id = materials.len() as u32;
@@ -40,6 +40,13 @@ impl TraceScene {
             }
         }
 
-        TraceScene { objects, materials, lights: scene.lights.clone(), width, height }
+        TraceScene {
+            objects,
+            materials,
+            lights: scene.lights.clone(),
+            camera: scene.camera,
+            width,
+            height,
+        }
     }
 }

@@ -59,7 +59,7 @@ fn main() -> Result<()> {
             ));
 
         acc.reset();
-        acc.accumulate(&ts, &scene.camera, &scene, SPP);
+        acc.accumulate(&ts, &scene, SPP);
 
         let elapsed = last_frame.elapsed().as_secs_f32();
         let fps = 1.0 / elapsed.max(0.001);

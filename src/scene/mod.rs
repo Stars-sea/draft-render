@@ -12,7 +12,7 @@ pub use light::{DirectionalLight, Light, PointLight};
 pub use material::{Material, Texture};
 pub use mesh::{Mesh, MeshBuilder, SubMesh};
 pub use object::SceneObject;
-pub use transform::Transform;
+pub use transform::{ObjTransform, Transform};
 
 pub struct Scene {
     pub camera: Camera,

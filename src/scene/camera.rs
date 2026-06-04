@@ -1,6 +1,7 @@
 use crate::geometry::Ray;
 use glam::{Quat, Vec2, Vec3A};
 
+#[derive(Clone, Copy)]
 pub struct Camera {
     position: Vec3A,
     rotation: Quat,
