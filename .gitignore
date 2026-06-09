@@ -1,5 +1,6 @@
 /target
 /models
+!/models/cornell_box
 
 .idea/
 .claude/
