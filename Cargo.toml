@@ -13,6 +13,7 @@ opt-level = 2
 anyhow = "1.0.102"
 fastrand = "2.4.1"
 glam = { version = "0.33.0", features = ["zerocopy"] }
+gltf = "1.4.1"
 image = "0.25"
 minifb = "0.28.0"
 rayon = "1.12"
