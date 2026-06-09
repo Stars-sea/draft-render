@@ -1,3 +1,4 @@
+use std::hash::{Hash, Hasher};
 use crate::geometry::Ray;
 use glam::{Quat, Vec2, Vec3A};
 
@@ -21,6 +22,19 @@ impl Camera {
     pub fn with_position(mut self, position: Vec3A) -> Self {
         self.position = position;
         self
+    }
+
+    pub(crate) fn state_hash(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.position.x.to_bits().hash(&mut h);
+        self.position.y.to_bits().hash(&mut h);
+        self.position.z.to_bits().hash(&mut h);
+        self.rotation.x.to_bits().hash(&mut h);
+        self.rotation.y.to_bits().hash(&mut h);
+        self.rotation.z.to_bits().hash(&mut h);
+        self.rotation.w.to_bits().hash(&mut h);
+        self.fov.to_bits().hash(&mut h);
+        h.finish()
     }
 
     pub fn primary_ray(

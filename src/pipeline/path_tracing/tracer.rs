@@ -1,6 +1,6 @@
 use super::intersection;
 use super::math::power_heuristic;
-use super::sampling::stratify_jitter;
+use super::sampling::halton_2d;
 use super::scene::TraceScene;
 use super::shading::ShadingPoint;
 use crate::color::Color;
@@ -11,6 +11,7 @@ use glam::Vec3A;
 
 const MAX_DEPTH: u32 = 8;
 const RR_START: u32 = 3;
+const INDIRECT_CLAMP: f32 = 10.0;
 
 pub(super) struct PathTracer<'a> {
     ts: &'a TraceScene,
@@ -24,7 +25,7 @@ impl<'a> PathTracer<'a> {
 
     pub(super) fn trace_pixel(&self, x: usize, y: usize, sample_index: u32) -> Color {
         let seed = ((y * self.ts.width + x) as u64).wrapping_mul(2654435761) ^ sample_index as u64;
-        let jitter = stratify_jitter(seed);
+        let jitter = halton_2d(sample_index, seed);
         let ray = self
             .ts
             .camera
@@ -77,7 +78,12 @@ impl<'a> PathTracer<'a> {
             prev_bsdf_pdf = sp.bsdf.pdf(wo, s.wi, sp.normal);
             prev_point = sp.point;
 
-            throughput *= sp.bsdf.evaluate(wo, s.wi, sp.normal) * (cos_theta / s.pdf);
+            let mut contrib = sp.bsdf.evaluate(wo, s.wi, sp.normal) * (cos_theta / s.pdf);
+            let m = contrib.max_channel();
+            if m > INDIRECT_CLAMP {
+                contrib *= INDIRECT_CLAMP / m;
+            }
+            throughput *= contrib;
             let origin = sp.point
                 + intersection::offset_along_normal(sp.geom_normal, s.wi, intersection::RAY_EPS);
             ray = Ray::new(origin, s.wi);

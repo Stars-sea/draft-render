@@ -5,6 +5,7 @@ mod mesh;
 mod object;
 mod transform;
 
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
 pub use camera::Camera;
@@ -35,5 +36,14 @@ impl Scene {
 
     pub fn add_object(&mut self, object: SceneObject) {
         self.objects.push(object);
+    }
+
+    pub fn state_hash(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.camera.state_hash().hash(&mut h);
+        for obj in &self.objects {
+            obj.transform.state_hash().hash(&mut h);
+        }
+        h.finish()
     }
 }

@@ -1,3 +1,4 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::geometry::Ray;
 use glam::{Mat3, Mat4, Quat, Vec3, Vec3A};
 
@@ -77,6 +78,21 @@ impl Transform {
         let r = Mat3::from_quat(self.rotation);
         let s_inv = Mat3::from_diagonal(1.0 / Vec3::from(self.scale));
         r * s_inv
+    }
+
+    pub(crate) fn state_hash(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.translation.x.to_bits().hash(&mut h);
+        self.translation.y.to_bits().hash(&mut h);
+        self.translation.z.to_bits().hash(&mut h);
+        self.rotation.x.to_bits().hash(&mut h);
+        self.rotation.y.to_bits().hash(&mut h);
+        self.rotation.z.to_bits().hash(&mut h);
+        self.rotation.w.to_bits().hash(&mut h);
+        self.scale.x.to_bits().hash(&mut h);
+        self.scale.y.to_bits().hash(&mut h);
+        self.scale.z.to_bits().hash(&mut h);
+        h.finish()
     }
 
     pub fn to_obj_transform(&self) -> ObjTransform {

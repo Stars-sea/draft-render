@@ -50,6 +50,7 @@ fn main() -> Result<()> {
     let mut window = Window::new("path tracing", width, height, WindowOptions::default())?;
     let first_frame = Instant::now();
     let mut last_frame = Instant::now();
+    let mut last_hash = 0u64;
     while window.is_open() && !window.is_key_down(Key::Escape) {
         scene.objects[0]
             .transform
@@ -58,7 +59,11 @@ fn main() -> Result<()> {
                 first_frame.elapsed().as_secs_f32() * 0.8,
             ));
 
-        acc.reset();
+        let hash = scene.state_hash();
+        if hash != last_hash {
+            acc.reset();
+            last_hash = hash;
+        }
         acc.accumulate(&ts, &scene, SPP);
 
         let elapsed = last_frame.elapsed().as_secs_f32();
