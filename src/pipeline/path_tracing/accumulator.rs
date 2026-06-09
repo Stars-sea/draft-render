@@ -2,6 +2,7 @@ use super::tracer::{PathTracer, PathTracerConfig};
 use crate::color::Color;
 use crate::pipeline::path_tracing::scene::TraceScene;
 use crate::scene::Scene;
+use glam::Vec3A;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -11,6 +12,10 @@ pub struct Accumulator {
     count: Vec<u32>,
     /// Per-depth path termination counters.  Index = depth (0..max_depth+1).
     pub depth_histogram: Vec<AtomicU32>,
+    /// First-hit world-space position (one per pixel, captured once).
+    first_hit_pos: Vec<Vec3A>,
+    /// First-hit geometric normal (one per pixel, captured once).
+    first_hit_normal: Vec<Vec3A>,
     width: usize,
 }
 
@@ -22,6 +27,8 @@ impl Accumulator {
             data: vec![Color::BLACK; n],
             count: vec![0; n],
             depth_histogram,
+            first_hit_pos: vec![Vec3A::ZERO; n],
+            first_hit_normal: vec![Vec3A::ZERO; n],
             width,
         }
     }
@@ -97,5 +104,50 @@ impl Accumulator {
         for a in &self.depth_histogram {
             a.store(0, Ordering::Relaxed);
         }
+        self.first_hit_pos.fill(Vec3A::ZERO);
+        self.first_hit_normal.fill(Vec3A::ZERO);
+    }
+
+    /// Capture first-hit geometry for every pixel using centre-of-pixel
+    /// primary rays.  Runs in a single parallel pass — no path tracing,
+    /// just the first intersection.
+    pub fn capture_first_hit(&mut self, ts: &TraceScene) {
+        // Config is irrelevant for first-hit — only camera + BVH are used.
+        let pt = PathTracer::new(ts, &ts.transforms, PathTracerConfig::default());
+        let w = self.width;
+        self.first_hit_pos
+            .par_iter_mut()
+            .zip(self.first_hit_normal.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, (pos, norm))| {
+                if let Some((p, n)) = pt.first_hit(i % w, i / w) {
+                    *pos = p;
+                    *norm = n;
+                }
+                // else stays Vec3A::ZERO (sky / miss)
+            });
+    }
+
+    /// First-hit positions as flat `[f32; H*W*3]` (x, y, z per pixel,
+    /// row-major).  Call after `capture_first_hit()`.
+    pub fn first_hit_pos_buffer(&self) -> Vec<f32> {
+        let mut buf = Vec::with_capacity(self.first_hit_pos.len() * 3);
+        for p in &self.first_hit_pos {
+            buf.push(p.x);
+            buf.push(p.y);
+            buf.push(p.z);
+        }
+        buf
+    }
+
+    /// First-hit geometric normals as flat `[f32; H*W*3]`.
+    pub fn first_hit_normal_buffer(&self) -> Vec<f32> {
+        let mut buf = Vec::with_capacity(self.first_hit_normal.len() * 3);
+        for n in &self.first_hit_normal {
+            buf.push(n.x);
+            buf.push(n.y);
+            buf.push(n.z);
+        }
+        buf
     }
 }

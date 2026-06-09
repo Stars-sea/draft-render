@@ -63,6 +63,22 @@ impl<'a> PathTracer<'a> {
         }
     }
 
+    /// Trace only the primary ray (center of pixel) and return first-hit
+    /// world-space position and geometric normal.  Used to generate a
+    /// per-pixel geometry buffer for region-mask classification.
+    pub(super) fn first_hit(&self, x: usize, y: usize) -> Option<(Vec3A, Vec3A)> {
+        let ray = self.ts.camera.primary_ray(
+            x,
+            y,
+            self.ts.width,
+            self.ts.height,
+            Vec2::new(0.5, 0.5), // pixel center
+        );
+        let sh = intersection::intersect_scene(self.ts, &ray, intersection::RAY_EPS, self.transforms)?;
+        let sp = intersection::resolve_hit(self.ts, &sh, &ray, self.transforms);
+        Some((sp.point, sp.geom_normal))
+    }
+
     pub(super) fn trace_pixel(&self, x: usize, y: usize, sample_index: u32) -> (Color, u32) {
         let seed = ((y * self.ts.width + x) as u64)
             .wrapping_mul(2654435761)

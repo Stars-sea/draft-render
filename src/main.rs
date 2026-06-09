@@ -35,6 +35,7 @@ struct Args {
     width: usize,
     height: usize,
     seed: u64,
+    gbuffer: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -51,6 +52,7 @@ fn parse_args() -> Result<Args> {
         width: 800,
         height: 600,
         seed: 0,
+        gbuffer: false,
     };
 
     let raw: Vec<String> = env::args().collect();
@@ -106,6 +108,9 @@ fn parse_args() -> Result<Args> {
             }
             "--seed" => {
                 args.seed = value(&mut i, &raw, "--seed")?.parse()?;
+            }
+            "--gbuffer" => {
+                args.gbuffer = true;
             }
             other => anyhow::bail!("unknown argument: {other}"),
         }
@@ -215,6 +220,11 @@ fn main() -> Result<()> {
     let ts = TraceScene::from_scene(&scene, width, height);
     let mut acc = Accumulator::new(width, height, args.max_depth);
 
+    // --- G-buffer capture (before rendering) ----------------------------
+    if args.gbuffer {
+        acc.capture_first_hit(&ts);
+    }
+
     // --- Headless mode (--output) --------------------------------------
     if let Some(ref prefix) = args.output {
         let t0 = Instant::now();
@@ -229,6 +239,16 @@ fn main() -> Result<()> {
 
         save_png(width, height, &image, &png_path)?;
         save_bin(width, height, &floats, &bin_path)?;
+
+        // G-buffer outputs
+        if args.gbuffer {
+            let pos_path = PathBuf::from(format!("{prefix}_first_hit_pos.bin"));
+            let norm_path = PathBuf::from(format!("{prefix}_first_hit_normal.bin"));
+            save_bin(width, height, &acc.first_hit_pos_buffer(), &pos_path)?;
+            save_bin(width, height, &acc.first_hit_normal_buffer(), &norm_path)?;
+            println!("  → {}", pos_path.display());
+            println!("  → {}", norm_path.display());
+        }
 
         // Save path-depth histogram for RR geometric-distribution modeling
         let csv_path = PathBuf::from(format!("{prefix}_depth.csv"));
