@@ -22,6 +22,13 @@ impl Color {
         ))
     }
 
+    /// Construct from linear RGB floats in `[0, 1]` (or HDR &gt; 1).
+    /// Use this for data sources that already provide linear values
+    /// (glTF baseColorFactor, spectral pre-integration).
+    pub fn from_linear_rgb(r: f32, g: f32, b: f32) -> Color {
+        Color(Vec3A::new(r, g, b))
+    }
+
     /// alpha channel is ignored (kept for compatibility with PMX texture loading).
     pub fn argb(_a: u8, r: u8, g: u8, b: u8) -> Color {
         Color::rgb(r, g, b)
@@ -31,12 +38,18 @@ impl Color {
         self.0.max_element()
     }
 
-    /// ACES filmic tone-map + sRGB gamma → ARGB `u32` for the framebuffer.
-    pub fn to_u32(self) -> u32 {
+    /// Tone-mapped sRGB bytes `[R, G, B]`.
+    pub fn to_srgb_bytes(self) -> [u8; 3] {
         let mapped = aces_tonemap(self.0);
         let gamma = mapped.powf(1.0 / 2.2);
         let c = (gamma.clamp(Vec3A::ZERO, Vec3A::ONE) * 255.0).round();
-        0xFF00_0000 | ((c.x as u32) << 16) | ((c.y as u32) << 8) | (c.z as u32)
+        [c.x as u8, c.y as u8, c.z as u8]
+    }
+
+    /// ACES filmic tone-map + sRGB gamma → ARGB `u32` for the framebuffer.
+    pub fn to_u32(self) -> u32 {
+        let [r, g, b] = self.to_srgb_bytes();
+        0xFF00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
     }
 
     pub fn lerp(&self, other: &Color, t: f32) -> Color {

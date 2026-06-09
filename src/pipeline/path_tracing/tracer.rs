@@ -7,40 +7,92 @@ use crate::color::Color;
 use crate::geometry::Ray;
 use crate::scene::ObjTransform;
 use fastrand::Rng;
-use glam::Vec3A;
+use glam::{Vec2, Vec3A};
 
-const MAX_DEPTH: u32 = 8;
-const RR_START: u32 = 3;
-const INDIRECT_CLAMP: f32 = 10.0;
+/// Sampling strategy for pixel AA / lens sampling.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Sampler {
+    /// 2D Halton (bases 2,3) with Cranley-Patterson rotation — deterministic QMC.
+    Halton,
+    /// Pure pseudo-random (jitter) — standard MC white-noise baseline.
+    Jitter,
+}
+
+/// Tunable parameters for the path tracer, exposed so the essay can sweep
+/// each factor independently.
+#[derive(Debug, Clone, Copy)]
+pub struct PathTracerConfig {
+    pub max_depth: u32,
+    /// Russian-roulette start depth (0 = disabled).
+    pub rr_start: u32,
+    /// Indirect-clamp threshold (≤ 0 = disabled).
+    pub indirect_clamp: f32,
+    pub sampler: Sampler,
+    /// Global seed mixed into per-pixel seeds for independent repetitions.
+    pub seed: u64,
+}
+
+impl Default for PathTracerConfig {
+    fn default() -> Self {
+        Self {
+            max_depth: 8,
+            rr_start: 3,
+            indirect_clamp: 10.0,
+            sampler: Sampler::Halton,
+            seed: 0,
+        }
+    }
+}
 
 pub(super) struct PathTracer<'a> {
     ts: &'a TraceScene,
     transforms: &'a [ObjTransform],
+    config: PathTracerConfig,
 }
 
 impl<'a> PathTracer<'a> {
-    pub(super) fn new(ts: &'a TraceScene, transforms: &'a [ObjTransform]) -> Self {
-        Self { ts, transforms }
+    pub(super) fn new(
+        ts: &'a TraceScene,
+        transforms: &'a [ObjTransform],
+        config: PathTracerConfig,
+    ) -> Self {
+        Self {
+            ts,
+            transforms,
+            config,
+        }
     }
 
-    pub(super) fn trace_pixel(&self, x: usize, y: usize, sample_index: u32) -> Color {
-        let seed = ((y * self.ts.width + x) as u64).wrapping_mul(2654435761) ^ sample_index as u64;
-        let jitter = halton_2d(sample_index, seed);
+    pub(super) fn trace_pixel(&self, x: usize, y: usize, sample_index: u32) -> (Color, u32) {
+        let seed = ((y * self.ts.width + x) as u64)
+            .wrapping_mul(2654435761)
+            .wrapping_add(self.config.seed)
+            ^ sample_index as u64;
+        let uv = match self.config.sampler {
+            Sampler::Halton => halton_2d(sample_index, seed),
+            Sampler::Jitter => {
+                let mut rng = Rng::with_seed(
+                    seed.wrapping_mul(6364136223846793005)
+                        .wrapping_add(sample_index as u64),
+                );
+                Vec2::new(rng.f32(), rng.f32())
+            }
+        };
         let ray = self
             .ts
             .camera
-            .primary_ray(x, y, self.ts.width, self.ts.height, jitter);
+            .primary_ray(x, y, self.ts.width, self.ts.height, uv);
         self.path_trace(ray, seed)
     }
 
-    fn path_trace(&self, mut ray: Ray, seed: u64) -> Color {
+    fn path_trace(&self, mut ray: Ray, seed: u64) -> (Color, u32) {
         let mut radiance = Color::BLACK;
         let mut throughput = Color::WHITE;
         let mut rng = Rng::with_seed(seed);
         let mut prev_bsdf_pdf = 1.0;
         let mut prev_point = Vec3A::ZERO;
 
-        for depth in 0..MAX_DEPTH {
+        for depth in 0..self.config.max_depth {
             let Some(sh) = intersection::intersect_scene(
                 self.ts,
                 &ray,
@@ -50,7 +102,7 @@ impl<'a> PathTracer<'a> {
                 if depth == 0 {
                     radiance = sky_color(ray.direction);
                 }
-                break;
+                return (radiance, depth);
             };
 
             let sp = intersection::resolve_hit(self.ts, &sh, &ray, self.transforms);
@@ -63,14 +115,14 @@ impl<'a> PathTracer<'a> {
                     radiance +=
                         throughput * sp.emission * power_heuristic(prev_bsdf_pdf, light_pdf);
                 }
-                break;
+                return (radiance, depth);
             }
 
             let wo = -ray.direction;
             radiance += throughput * self.direct_light(&sp, wo, &mut rng);
 
-            if russian_roulette(depth, &mut throughput, &mut rng) {
-                break;
+            if self.russian_roulette(depth, &mut throughput, &mut rng) {
+                return (radiance, depth);
             }
 
             let s = sp.bsdf.sample(wo, sp.normal, &mut rng);
@@ -79,9 +131,11 @@ impl<'a> PathTracer<'a> {
             prev_point = sp.point;
 
             let mut contrib = sp.bsdf.evaluate(wo, s.wi, sp.normal) * (cos_theta / s.pdf);
-            let m = contrib.max_channel();
-            if m > INDIRECT_CLAMP {
-                contrib *= INDIRECT_CLAMP / m;
+            if self.config.indirect_clamp > 0.0 {
+                let m = contrib.max_channel();
+                if m > self.config.indirect_clamp {
+                    contrib *= self.config.indirect_clamp / m;
+                }
             }
             throughput *= contrib;
             let origin = sp.point
@@ -89,7 +143,7 @@ impl<'a> PathTracer<'a> {
             ray = Ray::new(origin, s.wi);
         }
 
-        radiance
+        (radiance, self.config.max_depth)
     }
 
     #[inline]
@@ -132,19 +186,19 @@ impl<'a> PathTracer<'a> {
             .map(|light| light.pdf(point, wi))
             .sum()
     }
-}
 
-#[inline]
-fn russian_roulette(depth: u32, throughput: &mut Color, rng: &mut Rng) -> bool {
-    if depth < RR_START {
-        return false;
+    #[inline]
+    fn russian_roulette(&self, depth: u32, throughput: &mut Color, rng: &mut Rng) -> bool {
+        if self.config.rr_start == 0 || depth < self.config.rr_start {
+            return false;
+        }
+        let p = throughput.max_channel().min(0.9);
+        if rng.f32() > p {
+            return true;
+        }
+        *throughput *= 1.0 / p;
+        false
     }
-    let p = throughput.max_channel().min(0.9);
-    if rng.f32() > p {
-        return true;
-    }
-    *throughput *= 1.0 / p;
-    false
 }
 
 fn sky_color(dir: Vec3A) -> Color {

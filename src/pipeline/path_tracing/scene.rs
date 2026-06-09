@@ -1,5 +1,5 @@
 use crate::pipeline::bvh::{Bvh, BvhBuilder};
-use crate::scene::{Camera, Light, Material, Scene};
+use crate::scene::{Camera, Light, Material, ObjTransform, Scene};
 use std::sync::Arc;
 
 pub struct TraceScene {
@@ -7,6 +7,7 @@ pub struct TraceScene {
     pub(super) materials: Vec<Material>,
     pub(super) lights: Vec<Arc<dyn Light>>,
     pub(super) camera: Camera,
+    pub(super) transforms: Vec<ObjTransform>,
     pub(super) width: usize,
     pub(super) height: usize,
 }
@@ -15,6 +16,7 @@ impl TraceScene {
     pub fn from_scene(scene: &Scene, width: usize, height: usize) -> Self {
         let mut materials = Vec::new();
         let mut objects = Vec::new();
+        let mut transforms = Vec::new();
 
         for obj in &scene.objects {
             let normal_mat = obj.transform.normal_matrix();
@@ -37,6 +39,7 @@ impl TraceScene {
             let bvh = builder.build();
             if !bvh.triangles.is_empty() {
                 objects.push(bvh);
+                transforms.push(obj.transform.to_obj_transform());
             }
         }
 
@@ -45,6 +48,7 @@ impl TraceScene {
             materials,
             lights: scene.lights.clone(),
             camera: scene.camera,
+            transforms,
             width,
             height,
         }
