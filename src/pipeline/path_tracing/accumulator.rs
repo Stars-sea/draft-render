@@ -4,7 +4,7 @@ use crate::pipeline::path_tracing::scene::TraceScene;
 use crate::scene::Scene;
 use glam::Vec3A;
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 /// Progressive accumulation buffer: accumulates per-pixel HDR samples.
 pub struct Accumulator {
@@ -12,6 +12,10 @@ pub struct Accumulator {
     count: Vec<u32>,
     /// Per-depth path termination counters.  Index = depth (0..max_depth+1).
     pub depth_histogram: Vec<AtomicU32>,
+    /// Per-depth RR q-value sum (q × 1e7 fixed-point).  Index = depth.
+    pub rr_q_histogram: Vec<AtomicU64>,
+    /// Per-depth RR decision count.  Index = depth.
+    pub rr_q_count: Vec<AtomicU32>,
     /// First-hit world-space position (one per pixel, captured once).
     first_hit_pos: Vec<Vec3A>,
     /// First-hit geometric normal (one per pixel, captured once).
@@ -23,10 +27,14 @@ impl Accumulator {
     pub fn new(width: usize, height: usize, max_depth: u32) -> Self {
         let n = width * height;
         let depth_histogram = (0..=max_depth).map(|_| AtomicU32::new(0)).collect();
+        let rr_q_histogram = (0..=max_depth).map(|_| AtomicU64::new(0)).collect();
+        let rr_q_count = (0..=max_depth).map(|_| AtomicU32::new(0)).collect();
         Self {
             data: vec![Color::BLACK; n],
             count: vec![0; n],
             depth_histogram,
+            rr_q_histogram,
+            rr_q_count,
             first_hit_pos: vec![Vec3A::ZERO; n],
             first_hit_normal: vec![Vec3A::ZERO; n],
             width,
@@ -46,7 +54,7 @@ impl Accumulator {
         spp: u32,
         config: PathTracerConfig,
     ) {
-        let pt = PathTracer::new(ts, &ts.transforms, config);
+        let pt = PathTracer::new(ts, &ts.transforms, config, &self.rr_q_histogram, &self.rr_q_count);
         let hist = &self.depth_histogram;
 
         let offset = self.count[0]; // running total so far
@@ -113,7 +121,7 @@ impl Accumulator {
     /// just the first intersection.
     pub fn capture_first_hit(&mut self, ts: &TraceScene) {
         // Config is irrelevant for first-hit — only camera + BVH are used.
-        let pt = PathTracer::new(ts, &ts.transforms, PathTracerConfig::default());
+        let pt = PathTracer::new(ts, &ts.transforms, PathTracerConfig::default(), &self.rr_q_histogram, &self.rr_q_count);
         let w = self.width;
         self.first_hit_pos
             .par_iter_mut()

@@ -48,6 +48,10 @@ pub(super) struct PathTracer<'a> {
     ts: &'a TraceScene,
     transforms: &'a [ObjTransform],
     config: PathTracerConfig,
+    /// Per-depth RR q-value sum (q × 1e7 fixed-point).  Index = depth.
+    rr_q_hist: &'a [std::sync::atomic::AtomicU64],
+    /// Per-depth RR decision count.
+    rr_q_cnt: &'a [std::sync::atomic::AtomicU32],
 }
 
 impl<'a> PathTracer<'a> {
@@ -55,11 +59,15 @@ impl<'a> PathTracer<'a> {
         ts: &'a TraceScene,
         transforms: &'a [ObjTransform],
         config: PathTracerConfig,
+        rr_q_hist: &'a [std::sync::atomic::AtomicU64],
+        rr_q_cnt: &'a [std::sync::atomic::AtomicU32],
     ) -> Self {
         Self {
             ts,
             transforms,
             config,
+            rr_q_hist,
+            rr_q_cnt,
         }
     }
 
@@ -209,6 +217,10 @@ impl<'a> PathTracer<'a> {
             return false;
         }
         let p = throughput.max_channel().min(0.9);
+        // Record q value for statistical analysis (q × 1e7 fixed-point)
+        let d = depth.min(self.rr_q_hist.len() as u32 - 1) as usize;
+        self.rr_q_hist[d].fetch_add((p * 1e7) as u64, std::sync::atomic::Ordering::Relaxed);
+        self.rr_q_cnt[d].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if rng.f32() > p {
             return true;
         }

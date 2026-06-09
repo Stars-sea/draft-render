@@ -259,6 +259,21 @@ fn main() -> Result<()> {
         }
         fs::write(&csv_path, &csv)?;
 
+        // Save per-depth average RR q-value for cross-validation (§4.4)
+        let qcsv_path = PathBuf::from(format!("{prefix}_rr_q.csv"));
+        let mut qcsv = String::from("depth,avg_q,rr_count\n");
+        for (d, a) in acc.rr_q_histogram.iter().enumerate() {
+            let q_sum = a.load(std::sync::atomic::Ordering::Relaxed);
+            let q_cnt = acc.rr_q_count[d].load(std::sync::atomic::Ordering::Relaxed);
+            if q_cnt > 0 {
+                let avg_q = q_sum as f64 / (q_cnt as f64 * 1e7);
+                qcsv.push_str(&format!("{d},{avg_q:.6},{q_cnt}\n"));
+            } else {
+                qcsv.push_str(&format!("{d},0.0,0\n"));
+            }
+        }
+        fs::write(&qcsv_path, &qcsv)?;
+
         println!(
             "rendered {}×{}  spp={}  sampler={:?}  rr_depth={}  clamp={:.1}  in {:.1}s",
             width,
@@ -272,6 +287,7 @@ fn main() -> Result<()> {
         println!("  → {}", png_path.display());
         println!("  → {}", bin_path.display());
         println!("  → {}", csv_path.display());
+        println!("  → {}", qcsv_path.display());
         return Ok(());
     }
 
